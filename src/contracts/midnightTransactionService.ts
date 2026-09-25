@@ -135,7 +135,37 @@ export class MidnightTransactionService {
       message: 'Please approve and sign the transaction in your 1AM Wallet extension...'
     });
 
-    const activeApi = OneAmConnector.getConnectedApi();
+    let activeApi = OneAmConnector.getConnectedApi();
+    if (!activeApi) {
+      try {
+        activeApi = await OneAmConnector.getOrConnectApi();
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : '1AM Wallet is not connected.';
+        this.notify({
+          status: 'FAILED',
+          type: txType,
+          error: errorMsg,
+          step: 2,
+          totalSteps: 5,
+          message: errorMsg
+        });
+        throw new Error(errorMsg);
+      }
+    }
+
+    if (!activeApi || typeof activeApi.signData !== 'function') {
+      const errorMsg = '1AM Wallet signature provider is not available. Please ensure 1AM Wallet is connected.';
+      this.notify({
+        status: 'FAILED',
+        type: txType,
+        error: errorMsg,
+        step: 2,
+        totalSteps: 5,
+        message: errorMsg
+      });
+      throw new Error(errorMsg);
+    }
+
     const payloadHash = await sha256Hex(serializedPayload);
     
     // Exact 1AM Wallet signData schema: { data: string, options: { encoding: 'text' } }
@@ -158,42 +188,37 @@ export class MidnightTransactionService {
 
     let signature = '';
 
-    if (activeApi && typeof activeApi.signData === 'function') {
-      try {
-        signature = await OneAmConnector.signData(normalizedSubmitter, signPayload, activeApi);
-      } catch (err: unknown) {
-        const errorMsg = err instanceof Error ? err.message : String(err);
-        if (
-          errorMsg.includes('rejected') ||
-          errorMsg.includes('User rejected') ||
-          errorMsg.includes('cancelled') ||
-          errorMsg.includes('declined')
-        ) {
-          const rejection = new Error('Transaction Cancelled: You rejected the transaction in 1AM Wallet.');
-          this.notify({
-            status: 'REJECTED',
-            type: txType,
-            error: rejection.message,
-            step: 2,
-            totalSteps: 5,
-            message: 'Transaction was cancelled in 1AM Wallet.'
-          });
-          throw rejection;
-        }
-
+    try {
+      signature = await OneAmConnector.signData(normalizedSubmitter, signPayload, activeApi);
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      if (
+        errorMsg.includes('rejected') ||
+        errorMsg.includes('User rejected') ||
+        errorMsg.includes('cancelled') ||
+        errorMsg.includes('declined')
+      ) {
+        const rejection = new Error('Transaction Cancelled: You rejected the transaction in 1AM Wallet.');
         this.notify({
-          status: 'FAILED',
+          status: 'REJECTED',
           type: txType,
-          error: errorMsg,
+          error: rejection.message,
           step: 2,
           totalSteps: 5,
-          message: errorMsg
+          message: 'Transaction was cancelled in 1AM Wallet.'
         });
-        throw new Error(errorMsg);
+        throw rejection;
       }
-    } else {
-      const mockRaw = `SIG_${normalizedSubmitter}_${txType}_${Date.now()}`;
-      signature = await sha256Hex(mockRaw);
+
+      this.notify({
+        status: 'FAILED',
+        type: txType,
+        error: errorMsg,
+        step: 2,
+        totalSteps: 5,
+        message: errorMsg
+      });
+      throw new Error(errorMsg);
     }
 
     // STEP 3: SUBMITTING TO MIDNIGHT PREPROD RPC

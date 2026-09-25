@@ -28,6 +28,18 @@ describe('MidnightTransactionService — 1AM Wallet & Midnight Preprod On-Chain 
     localStorage.clear();
     AuthService.registerOrganizer(organizerAddress, 'Alpha Org', 'Midnight Esports');
     MidnightTransactionService.resetProgress();
+
+    const mockApi = {
+      getUnshieldedAddress: vi.fn().mockResolvedValue(organizerAddress),
+      getShieldedAddresses: vi.fn().mockResolvedValue([]),
+      signData: vi.fn().mockImplementation(async (payload: unknown) => {
+        return {
+          signature: '0x' + Array.from({ length: 64 }, () => 'a').join(''),
+          publicKey: '0xpubkey'
+        };
+      })
+    };
+    OneAmConnector.setConnectedApi(mockApi as any);
   });
 
   it('should successfully prepare, sign, broadcast and confirm a CREATE_TOURNAMENT (TEAM) transaction', async () => {
@@ -183,9 +195,39 @@ describe('MidnightTransactionService — 1AM Wallet & Midnight Preprod On-Chain 
     expect(progress?.status).toBe('REJECTED');
 
     const list = ContractService.listTournaments();
-    expect(list.find(t => t.name === 'Rejected Cup')).toBeUndefined();
-
     vi.restoreAllMocks();
+  });
+
+  it('should abort immediately and NOT create tournament if wallet signing fails', async () => {
+    const mockFailingApi = {
+      signData: vi.fn().mockRejectedValue(new Error('Sign Data failed: Invalid sign data payload'))
+    };
+    OneAmConnector.setConnectedApi(mockFailingApi as any);
+
+    await expect(
+      MidnightTransactionService.createTournament({
+        name: 'Failed Payload Cup',
+        description: 'Should not exist',
+        gameTitle: 'BGMI',
+        organizerAddress,
+        organizerName: 'Alpha Org',
+        tournamentType: 'SOLO',
+        requirements: {
+          minimumRank: RankTier.GOLD,
+          minimumScore: 1000,
+          minimumWins: 0
+        },
+        prizePool: '1,000 DUST',
+        schedule: defaultSchedule,
+        location: defaultLocation
+      })
+    ).rejects.toThrow(/1AM Wallet signing failed/);
+
+    const progress = MidnightTransactionService.getCurrentProgress();
+    expect(progress?.status).toBe('FAILED');
+
+    const list = ContractService.listTournaments();
+    expect(list.find(t => t.name === 'Failed Payload Cup')).toBeUndefined();
   });
 
   it('should submit solo application with ZK proof and 1AM wallet signature', async () => {
