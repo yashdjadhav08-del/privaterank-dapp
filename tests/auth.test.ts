@@ -45,7 +45,7 @@ describe('1AM Wallet Connector & Address Normalization (No toLowerCase Errors)',
     expect(AuthService.isOrganizerAuthorized({ foo: 'bar' })).toBe(false);
   });
 
-  it('should call signData with the exact schema { data: string, options: { encoding: "text" } }', async () => {
+  it('should call signData with the correct 2-argument API: signData(data: string, options: { encoding })', async () => {
     const mockSignData = vi.fn().mockResolvedValue({
       signature: '0xsignature12345',
       publicKey: '0xpubkey'
@@ -61,12 +61,13 @@ describe('1AM Wallet Connector & Address Normalization (No toLowerCase Errors)',
     expect(signature).toBe('0xsignature12345');
     expect(mockSignData).toHaveBeenCalledTimes(1);
 
-    // Checks that the payload was passed as 2nd arg or 1st arg
-    const payload = mockSignData.mock.calls[0][1] || mockSignData.mock.calls[0][0];
-    expect(typeof payload).toBe('object');
-    expect(typeof payload.data).toBe('string');
-    expect(payload.data.length).toBeGreaterThan(0);
-    expect(payload.options).toEqual({ encoding: 'text' });
+    // Official Midnight DApp Connector API: signData(data: string, options: { encoding })
+    // args[0] = data string, args[1] = options object
+    const callArgs = mockSignData.mock.calls[0];
+    expect(typeof callArgs[0]).toBe('string');   // first arg is the data string
+    expect(callArgs[0].length).toBeGreaterThan(0);
+    expect(typeof callArgs[1]).toBe('object');    // second arg is options
+    expect(callArgs[1]).toEqual({ encoding: 'text' });
   });
 
   it('should safely handle user rejection without crashing', async () => {

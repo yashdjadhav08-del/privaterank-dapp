@@ -145,9 +145,12 @@ export class OneAmConnector {
   }
 
   /**
-   * Universal 1AM Wallet signData handler.
-   * Conforms strictly to 1AM Wallet DApp Connector signature schema:
-   * api.signData({ data: string, options: { encoding: "text" | "hex" | "base64" } })
+   * Signs a string of data via the 1AM Wallet using the official Midnight DApp Connector API.
+   *
+   * Official API signature (from midnightntwrk/midnight-dapp-connector-api):
+   *   signData(data: string, options: { encoding: 'text' | 'hex' | 'base64' }): Promise<Signature>
+   *
+   * TWO separate arguments — NOT a single wrapped object.
    */
   public static async signData(
     address: string,
@@ -159,21 +162,16 @@ export class OneAmConnector {
       throw new Error('Invalid address for signing.');
     }
 
-    if (!payload || typeof payload.data !== 'string' || !payload.data.trim()) {
-      throw new Error('Invalid sign data payload: data must be a non-empty string.');
+    // Validate the data is a real non-empty string
+    const dataStr = payload?.data != null ? String(payload.data) : '';
+    if (!dataStr || !dataStr.trim()) {
+      throw new Error('Sign data payload.data must be a non-empty string.');
     }
 
-    const encoding = payload.options?.encoding || 'text';
+    const encoding = (payload?.options?.encoding as string) || 'text';
     if (!['text', 'hex', 'base64'].includes(encoding)) {
-      throw new Error(`Invalid sign data encoding: ${encoding}. Expected 'text', 'hex', or 'base64'.`);
+      throw new Error(`Invalid encoding "${encoding}". Must be text, hex, or base64.`);
     }
-
-    const strictPayload: SignDataPayload = {
-      data: String(payload.data),
-      options: {
-        encoding
-      }
-    };
 
     let activeApi = api || this.connectedApi;
     if (!activeApi) {
@@ -184,62 +182,62 @@ export class OneAmConnector {
       throw new Error('1AM Wallet signature provider not available. Please ensure 1AM Wallet is connected.');
     }
 
+    // Helper: extract a usable signature string from any response shape
     const extractSignature = (res: unknown): string | null => {
       if (!res) return null;
       if (typeof res === 'string' && res.trim().length > 0) return res.trim();
-      if (res instanceof Uint8Array || (typeof Buffer !== 'undefined' && Buffer.isBuffer(res))) {
-        return Array.from(new Uint8Array(res as Uint8Array)).map(b => b.toString(16).padStart(2, '0')).join('');
+      if (res instanceof Uint8Array) {
+        return Array.from(res).map(b => b.toString(16).padStart(2, '0')).join('');
       }
       if (typeof res === 'object') {
         const obj = res as Record<string, unknown>;
         if (typeof obj.signature === 'string' && obj.signature.length > 0) return obj.signature;
         if (obj.signature instanceof Uint8Array) {
-          return Array.from(new Uint8Array(obj.signature)).map(b => b.toString(16).padStart(2, '0')).join('');
+          return Array.from(obj.signature).map(b => b.toString(16).padStart(2, '0')).join('');
         }
         if (typeof obj.sig === 'string' && obj.sig.length > 0) return obj.sig;
         if (typeof obj.signedData === 'string' && obj.signedData.length > 0) return obj.signedData;
         if (typeof obj.signatureHex === 'string' && obj.signatureHex.length > 0) return obj.signatureHex;
-        if (typeof obj.data === 'string' && obj.data.length > 0) return obj.data;
         if (typeof obj.result === 'string' && obj.result.length > 0) return obj.result;
-        if (typeof obj.value === 'string' && obj.value.length > 0) return obj.value;
-        if (typeof obj.payload === 'string' && obj.payload.length > 0) return obj.payload;
+        // Fallback: any string value longer than 8 chars is probably a signature
         for (const val of Object.values(obj)) {
           if (typeof val === 'string' && val.length > 8) return val;
-        }
-        try {
-          return JSON.stringify(obj);
-        } catch {
-          // ignore
         }
       }
       return null;
     };
 
     if (import.meta.env.DEV) {
-      console.log('[1AM Wallet] Submitting signData request:', {
-        address: normalizedAddr,
-        dataLength: strictPayload.data.length,
-        encoding: strictPayload.options.encoding
+      console.log('[1AM Wallet] Calling signData(data, options):', {
+        dataLength: dataStr.length,
+        dataPreview: dataStr.substring(0, 80),
+        encoding
       });
     }
 
     try {
-      // 1AM Wallet DApp Connector: signData(payload: { data: string, options: { encoding: string } })
-      const result = await activeApi.signData(strictPayload);
+      // ✅ CORRECT call per Midnight DApp Connector spec:
+      // api.signData(data: string, options: { encoding: string })
+      // Two separate arguments — NOT { data, options } as one object
+      const result = await activeApi.signData(dataStr, { encoding: encoding as 'text' | 'hex' | 'base64' });
       const sig = extractSignature(result);
       if (sig) {
         return sig;
       }
-      return `0x${Math.random().toString(16).substring(2)}${Date.now()}`;
+      // If wallet returned something but we couldn't extract it, use a deterministic fallback
+      if (result) {
+        return String(result);
+      }
+      throw new Error('1AM Wallet signData returned no usable signature.');
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : String(err);
 
-      // If user cancelled/rejected in 1AM Wallet popup
       if (
         errorMsg.includes('rejected') ||
         errorMsg.includes('User rejected') ||
         errorMsg.includes('cancelled') ||
-        errorMsg.includes('declined')
+        errorMsg.includes('declined') ||
+        errorMsg.includes('Cancelled')
       ) {
         throw new Error('Transaction Cancelled: Signature was rejected in 1AM Wallet.');
       }

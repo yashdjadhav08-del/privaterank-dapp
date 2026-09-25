@@ -32,7 +32,15 @@ describe('MidnightTransactionService — 1AM Wallet & Midnight Preprod On-Chain 
     const mockApi = {
       getUnshieldedAddress: vi.fn().mockResolvedValue(organizerAddress),
       getShieldedAddresses: vi.fn().mockResolvedValue([]),
-      signData: vi.fn().mockImplementation(async (payload: unknown) => {
+      // Matches the official Midnight DApp Connector API: signData(data: string, options: { encoding })
+      signData: vi.fn().mockImplementation(async (data: string, options: { encoding: string }) => {
+        // Verify the API is being called with correct 2-argument format
+        if (typeof data !== 'string' || !data) {
+          throw new Error('Invalid sign data payload: requires data (string)');
+        }
+        if (!options || !options.encoding || !['text', 'hex', 'base64'].includes(options.encoding)) {
+          throw new Error('Invalid sign data payload: requires options.encoding (hex|base64|text)');
+        }
         return {
           signature: '0x' + Array.from({ length: 64 }, () => 'a').join(''),
           publicKey: '0xpubkey'

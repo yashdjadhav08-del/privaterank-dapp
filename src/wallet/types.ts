@@ -7,11 +7,15 @@ export interface ShieldedAddress {
   viewingKey?: string;
 }
 
+export interface SignDataOptions {
+  encoding: 'hex' | 'base64' | 'text';
+  keyType?: 'payment' | 'stake';
+}
+
+/** @deprecated Use signData(data, options) directly — kept for internal type compatibility */
 export interface SignDataPayload {
   data: string;
-  options: {
-    encoding: 'hex' | 'base64' | 'text';
-  };
+  options: SignDataOptions;
 }
 
 export interface SignDataResult {
@@ -26,7 +30,8 @@ export interface MidnightConnectedAPI {
   getDustAddress?(): Promise<string>;
   getShieldedBalances?(): Promise<Record<string, bigint>>;
   getDustBalance?(): Promise<bigint>;
-  signData(payloadOrAddress: unknown, maybePayload?: unknown): Promise<SignDataResult | string>;
+  // Official Midnight DApp Connector API: signData(data: string, options: SignDataOptions)
+  signData(data: string, options: SignDataOptions): Promise<SignDataResult | string>;
   submitTx?(txPayload: unknown): Promise<{ txHash: string }>;
   getNetwork?(): Promise<string>;
 }
