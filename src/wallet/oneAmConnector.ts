@@ -207,58 +207,71 @@ export class OneAmConnector {
       return null;
     };
 
-    // 1. Primary standard call: api.signData(payload) where payload = { data, options: { encoding } }
-    try {
-      const result = await activeApi.signData(strictPayload);
-      const sig = extractSignature(result);
-      if (sig) return sig;
-    } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      if (
-        errorMsg.includes('rejected') ||
-        errorMsg.includes('User rejected') ||
-        errorMsg.includes('cancelled') ||
-        errorMsg.includes('declined')
-      ) {
-        throw new Error('Transaction Cancelled: Signature was rejected in 1AM Wallet.');
-      }
+    const cleanData = String(payload.data).trim();
+    const cleanEncoding = payload.options?.encoding || 'text';
 
-      // 2. Secondary fallback call: api.signData(address, payload)
+    const variations: Array<{ name: string; fn: () => Promise<unknown> }> = [
+      {
+        name: 'api.signData({ data, options: { encoding } })',
+        fn: () => (activeApi as unknown as { signData: (p: unknown) => Promise<unknown> }).signData({
+          data: cleanData,
+          options: { encoding: cleanEncoding }
+        })
+      },
+      {
+        name: 'api.signData(address, { data, options: { encoding } })',
+        fn: () => (activeApi as unknown as { signData: (a: string, p: unknown) => Promise<unknown> }).signData(targetAddress, {
+          data: cleanData,
+          options: { encoding: cleanEncoding }
+        })
+      },
+      {
+        name: 'api.signData({ address, data, options: { encoding } })',
+        fn: () => (activeApi as unknown as { signData: (p: unknown) => Promise<unknown> }).signData({
+          address: targetAddress,
+          data: cleanData,
+          options: { encoding: cleanEncoding }
+        })
+      },
+      {
+        name: 'api.signData(data, { encoding })',
+        fn: () => (activeApi as unknown as { signData: (d: string, o: unknown) => Promise<unknown> }).signData(cleanData, { encoding: cleanEncoding })
+      },
+      {
+        name: 'api.signData(address, data, { encoding })',
+        fn: () => (activeApi as unknown as { signData: (a: string, d: string, o: unknown) => Promise<unknown> }).signData(targetAddress, cleanData, { encoding: cleanEncoding })
+      }
+    ];
+
+    let lastErrorMsg = '';
+
+    for (const variation of variations) {
       try {
-        const fallbackResult = await activeApi.signData(targetAddress, strictPayload);
-        const fallbackSig = extractSignature(fallbackResult);
-        if (fallbackSig) return fallbackSig;
-      } catch (innerErr: unknown) {
-        const innerMsg = innerErr instanceof Error ? innerErr.message : String(innerErr);
+        if (import.meta.env.DEV) {
+          console.log(`[1AM Wallet] Trying sign attempt: ${variation.name}`);
+        }
+        const result = await variation.fn();
+        const sig = extractSignature(result);
+        if (sig) {
+          return sig;
+        }
+      } catch (err: unknown) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        lastErrorMsg = errorMsg;
+
+        // If user explicitly cancelled/rejected in the 1AM wallet popup, do not attempt other variations
         if (
-          innerMsg.includes('rejected') ||
-          innerMsg.includes('User rejected') ||
-          innerMsg.includes('cancelled') ||
-          innerMsg.includes('declined')
+          errorMsg.includes('rejected') ||
+          errorMsg.includes('User rejected') ||
+          errorMsg.includes('cancelled') ||
+          errorMsg.includes('declined')
         ) {
           throw new Error('Transaction Cancelled: Signature was rejected in 1AM Wallet.');
         }
-
-        // 3. Tertiary fallback call: api.signData({ address, data, options })
-        try {
-          const mergedResult = await activeApi.signData({
-            address: targetAddress,
-            data: strictPayload.data,
-            options: strictPayload.options
-          });
-          const mergedSig = extractSignature(mergedResult);
-          if (mergedSig) return mergedSig;
-        } catch {
-          // preserve original error
-        }
-
-        throw new Error(`1AM Wallet signing failed: ${errorMsg}`);
       }
-
-      throw new Error(`1AM Wallet signing failed: ${errorMsg}`);
     }
 
-    throw new Error('1AM Wallet signing failed: No signature returned from wallet.');
+    throw new Error(`1AM Wallet signing failed: ${lastErrorMsg || 'No signature returned from 1AM Wallet.'}`);
   }
 
   public static async signChallenge(address: string, api?: MidnightConnectedAPI): Promise<string> {
