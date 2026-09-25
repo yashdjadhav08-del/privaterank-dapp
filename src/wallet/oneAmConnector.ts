@@ -207,9 +207,9 @@ export class OneAmConnector {
       return null;
     };
 
-    // 1. Primary standard call: api.signData(address, payload)
+    // 1. Primary standard call: api.signData(payload) where payload = { data, options: { encoding } }
     try {
-      const result = await activeApi.signData(targetAddress, strictPayload);
+      const result = await activeApi.signData(strictPayload);
       const sig = extractSignature(result);
       if (sig) return sig;
     } catch (err: unknown) {
@@ -223,9 +223,9 @@ export class OneAmConnector {
         throw new Error('Transaction Cancelled: Signature was rejected in 1AM Wallet.');
       }
 
-      // 2. Secondary fallback call: api.signData(payload) if provider has single-arg signature
+      // 2. Secondary fallback call: api.signData(address, payload)
       try {
-        const fallbackResult = await activeApi.signData(strictPayload);
+        const fallbackResult = await activeApi.signData(targetAddress, strictPayload);
         const fallbackSig = extractSignature(fallbackResult);
         if (fallbackSig) return fallbackSig;
       } catch (innerErr: unknown) {
@@ -241,12 +241,18 @@ export class OneAmConnector {
 
         // 3. Tertiary fallback call: api.signData({ address, data, options })
         try {
-          const mergedResult = await activeApi.signData({ address: targetAddress, ...strictPayload });
+          const mergedResult = await activeApi.signData({
+            address: targetAddress,
+            data: strictPayload.data,
+            options: strictPayload.options
+          });
           const mergedSig = extractSignature(mergedResult);
           if (mergedSig) return mergedSig;
         } catch {
           // preserve original error
         }
+
+        throw new Error(`1AM Wallet signing failed: ${errorMsg}`);
       }
 
       throw new Error(`1AM Wallet signing failed: ${errorMsg}`);
