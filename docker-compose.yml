@@ -1,0 +1,23 @@
+services:
+  privaterank-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_NETWORK: ${VITE_NETWORK:-preprod}
+        VITE_PREPROD_RPC_URL: ${VITE_PREPROD_RPC_URL:-https://rpc.preprod.midnight.network}
+        VITE_PREPROD_INDEXER_URL: ${VITE_PREPROD_INDEXER_URL:-https://indexer.preprod.midnight.network/api/v1/graphql}
+        VITE_PREPROD_PROOF_SERVER_URL: ${VITE_PREPROD_PROOF_SERVER_URL:-http://127.0.0.1:6300}
+        VITE_PREPROD_CONTRACT_ADDRESS: ${VITE_PREPROD_CONTRACT_ADDRESS:-0200preprod_privaterank_midnight_contract_v1}
+    container_name: privaterank-dapp
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:80"
+    environment:
+      - NODE_ENV=production
+      - NETWORK=preprod
+      - VITE_NETWORK=preprod
+      - VITE_PREPROD_RPC_URL=${VITE_PREPROD_RPC_URL:-https://rpc.preprod.midnight.network}
+      - VITE_PREPROD_INDEXER_URL=${VITE_PREPROD_INDEXER_URL:-https://indexer.preprod.midnight.network/api/v1/graphql}
+      - VITE_PREPROD_PROOF_SERVER_URL=${VITE_PREPROD_PROOF_SERVER_URL:-http://127.0.0.1:6300}
+      - VITE_PREPROD_CONTRACT_ADDRESS=${VITE_PREPROD_CONTRACT_ADDRESS:-0200preprod_privaterank_midnight_contract_v1}

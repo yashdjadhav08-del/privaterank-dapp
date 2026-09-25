@@ -1,0 +1,192 @@
+// PrivateRank Midnight Network Compact Smart Contract
+// Language: Compact (Minokawa) for Midnight Network ZK-DApp
+// Privacy-Preserving Gaming Tournament Eligibility Verification
+
+pragma language_version >= 0.1.0;
+
+export enum TournamentStatus {
+  DRAFT,
+  OPEN,
+  CLOSED
+}
+
+export enum ApplicationStatus {
+  APPLIED,
+  PROOF_GENERATED,
+  PROOF_VERIFIED,
+  PENDING_REVIEW,
+  APPROVED,
+  REJECTED
+}
+
+export struct Tournament {
+  organizer: Address,
+  minRank: Uint<8>,
+  minScore: Uint<32>,
+  minWins: Uint<32>,
+  deadline: Uint<64>,
+  status: TournamentStatus,
+  applicantCount: Uint<32>
+}
+
+export struct Application {
+  tournamentId: Bytes<32>,
+  anonymousPlayerId: Bytes<16>,
+  proofCommitment: Bytes<32>,
+  status: ApplicationStatus,
+  playerRank: Uint<8>,
+  playerScore: Uint<32>,
+  playerWins: Uint<32>,
+  submittedAt: Uint<64>,
+  rejectionReasonHash: Bytes<32>
+}
+
+// -------------------------------------------------------------
+// LEDGER (Public State on the Midnight Blockchain)
+// -------------------------------------------------------------
+export ledger authorizedOrganizers: Map<Address, Boolean>;
+export ledger tournaments: Map<Bytes<32>, Tournament>;
+export ledger applications: Map<Bytes<32>, Application>;
+export ledger proofCommitments: Map<Bytes<32>, Boolean>;
+
+// -------------------------------------------------------------
+// WITNESS (Private Off-Chain Data Provided by Player's Client)
+// -------------------------------------------------------------
+witness getPlayerSecretSalt(): Bytes<32>;
+witness getPlayerRank(): Uint<8>;
+witness getPlayerScore(): Uint<32>;
+witness getPlayerWins(): Uint<32>;
+witness getPlayerIdentityHash(): Bytes<32>;
+
+// -------------------------------------------------------------
+// CIRCUITS (ZK Proof Generation and State Transition Logic)
+// -------------------------------------------------------------
+
+// Organizer Authorization & Allowlisting
+export circuit registerOrganizer(organizer: Address): [] {
+  // In MVP allowlist registry, authorized organizers can be registered
+  authorizedOrganizers.insert(organizer, true);
+}
+
+// Organizer Creates a Tournament
+export circuit createTournament(
+  tournamentId: Bytes<32>,
+  minRank: Uint<8>,
+  minScore: Uint<32>,
+  minWins: Uint<32>,
+  deadline: Uint<64>
+): [] {
+  assert authorizedOrganizers.member(caller());
+  assert !tournaments.member(tournamentId);
+  assert minRank >= 1 && minRank <= 7;
+
+  const newTournament = Tournament {
+    organizer: caller(),
+    minRank: minRank,
+    minScore: minScore,
+    minWins: minWins,
+    deadline: deadline,
+    status: TournamentStatus.DRAFT,
+    applicantCount: 0
+  };
+
+  tournaments.insert(tournamentId, newTournament);
+}
+
+// Organizer Publishes Tournament
+export circuit publishTournament(tournamentId: Bytes<32>): [] {
+  assert tournaments.member(tournamentId);
+  let tourney = tournaments.lookup(tournamentId);
+  assert tourney.organizer == caller();
+  assert tourney.status == TournamentStatus.DRAFT;
+
+  tourney.status = TournamentStatus.OPEN;
+  tournaments.insert(tournamentId, tourney);
+}
+
+// Organizer Closes Tournament
+export circuit closeTournament(tournamentId: Bytes<32>): [] {
+  assert tournaments.member(tournamentId);
+  let tourney = tournaments.lookup(tournamentId);
+  assert tourney.organizer == caller();
+
+  tourney.status = TournamentStatus.CLOSED;
+  tournaments.insert(tournamentId, tourney);
+}
+
+// Player Generates ZK Eligibility Proof & Submits Application
+// This circuit proves rank >= minRank and score >= minScore without disclosing
+// private personal info (Name, email, phone, physical location).
+export circuit proveAndSubmitApplication(
+  tournamentId: Bytes<32>,
+  anonymousPlayerId: Bytes<16>
+): Bytes<32> {
+  assert tournaments.member(tournamentId);
+  let tourney = tournaments.lookup(tournamentId);
+  assert tourney.status == TournamentStatus.OPEN;
+
+  // Retrieve private witness credentials from player's local secure environment
+  const privateRank = getPlayerRank();
+  const privateScore = getPlayerScore();
+  const privateWins = getPlayerWins();
+  const privateSalt = getPlayerSecretSalt();
+  const privateIdentityHash = getPlayerIdentityHash();
+
+  // Zero-Knowledge Eligibility Invariant Assertions
+  assert privateRank >= tourney.minRank;
+  assert privateScore >= tourney.minScore;
+  assert privateWins >= tourney.minWins;
+
+  // Compute deterministic ZK commitment without exposing private personal identity
+  const commitment = hash(tournamentId, anonymousPlayerId, privateRank, privateScore, privateSalt, privateIdentityHash);
+  assert !proofCommitments.member(commitment);
+
+  // Compute application ID
+  const appId = hash(tournamentId, anonymousPlayerId);
+  assert !applications.member(appId);
+
+  // Record commitment in public ledger
+  proofCommitments.insert(commitment, true);
+
+  // Record application with shareable gaming stats and verified ZK status
+  const newApp = Application {
+    tournamentId: tournamentId,
+    anonymousPlayerId: anonymousPlayerId,
+    proofCommitment: commitment,
+    status: ApplicationStatus.PROOF_VERIFIED,
+    playerRank: privateRank,
+    playerScore: privateScore,
+    playerWins: privateWins,
+    submittedAt: disclose(timestamp()),
+    rejectionReasonHash: 0x0000000000000000000000000000000000000000000000000000000000000000
+  };
+
+  applications.insert(appId, newApp);
+  tourney.applicantCount = tourney.applicantCount + 1;
+  tournaments.insert(tournamentId, tourney);
+
+  return commitment;
+}
+
+// Organizer Reviews Application (Approve or Reject with Reason)
+export circuit reviewApplication(
+  appId: Bytes<32>,
+  decision: Boolean,
+  reasonHash: Bytes<32>
+): [] {
+  assert applications.member(appId);
+  let app = applications.lookup(appId);
+  
+  assert tournaments.member(app.tournamentId);
+  let tourney = tournaments.lookup(app.tournamentId);
+  assert tourney.organizer == caller();
+
+  if (decision) {
+    app.status = ApplicationStatus.APPROVED;
+  } else {
+    app.status = ApplicationStatus.REJECTED;
+    app.rejectionReasonHash = reasonHash;
+  }
+
+  applications.insert(appId, app);
+}
