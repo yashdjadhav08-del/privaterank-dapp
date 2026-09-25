@@ -144,6 +144,117 @@ export class OneAmConnector {
     return true;
   }
 
+  /**
+   * Universal 1AM Wallet signData handler.
+   * Conforms strictly to 1AM Wallet DApp Connector signature schema:
+   * (address: string, payload: { data: string, options: { encoding: "text" | "hex" | "base64" } })
+   */
+  public static async signData(
+    address: string,
+    payload: SignDataPayload,
+    api?: MidnightConnectedAPI
+  ): Promise<string> {
+    const normalizedAddr = normalizeAddress(address);
+    if (!normalizedAddr) {
+      throw new Error('Invalid address for signing.');
+    }
+
+    if (!payload || typeof payload.data !== 'string' || !payload.data.trim()) {
+      throw new Error('Invalid sign data payload: data must be a non-empty string.');
+    }
+
+    const encoding = payload.options?.encoding || 'text';
+    if (!['text', 'hex', 'base64'].includes(encoding)) {
+      throw new Error(`Invalid sign data encoding: ${encoding}. Expected 'text', 'hex', or 'base64'.`);
+    }
+
+    const strictPayload: SignDataPayload = {
+      data: payload.data,
+      options: {
+        encoding
+      }
+    };
+
+    const activeApi = api || this.connectedApi;
+    if (!activeApi || typeof activeApi.signData !== 'function') {
+      throw new Error('1AM Wallet signature provider not available. Please ensure wallet is connected.');
+    }
+
+    // Attempt to get active unshielded address directly from wallet provider if possible
+    let targetAddress = normalizedAddr;
+    try {
+      if (typeof activeApi.getUnshieldedAddress === 'function') {
+        const liveAddress = await activeApi.getUnshieldedAddress();
+        if (liveAddress && typeof liveAddress === 'string') {
+          targetAddress = normalizeAddress(liveAddress);
+        }
+      }
+    } catch {
+      // Keep normalizedAddr
+    }
+
+    const extractSignature = (res: unknown): string | null => {
+      if (!res) return null;
+      if (typeof res === 'string' && res.trim().length > 0) return res.trim();
+      if (typeof res === 'object') {
+        const obj = res as Record<string, unknown>;
+        if (typeof obj.signature === 'string' && obj.signature.length > 0) return obj.signature;
+        if (typeof obj.sig === 'string' && obj.sig.length > 0) return obj.sig;
+        if (typeof obj.data === 'string' && obj.data.length > 0) return obj.data;
+        if (typeof obj.signedData === 'string' && obj.signedData.length > 0) return obj.signedData;
+        if (typeof obj.signatureHex === 'string' && obj.signatureHex.length > 0) return obj.signatureHex;
+      }
+      return null;
+    };
+
+    // 1. Primary standard call: api.signData(address, payload)
+    try {
+      const result = await activeApi.signData(targetAddress, strictPayload);
+      const sig = extractSignature(result);
+      if (sig) return sig;
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      if (
+        errorMsg.includes('rejected') ||
+        errorMsg.includes('User rejected') ||
+        errorMsg.includes('cancelled') ||
+        errorMsg.includes('declined')
+      ) {
+        throw new Error('Transaction Cancelled: Signature was rejected in 1AM Wallet.');
+      }
+
+      // 2. Secondary fallback call: api.signData(payload) if provider has single-arg signature
+      try {
+        const fallbackResult = await activeApi.signData(strictPayload);
+        const fallbackSig = extractSignature(fallbackResult);
+        if (fallbackSig) return fallbackSig;
+      } catch (innerErr: unknown) {
+        const innerMsg = innerErr instanceof Error ? innerErr.message : String(innerErr);
+        if (
+          innerMsg.includes('rejected') ||
+          innerMsg.includes('User rejected') ||
+          innerMsg.includes('cancelled') ||
+          innerMsg.includes('declined')
+        ) {
+          throw new Error('Transaction Cancelled: Signature was rejected in 1AM Wallet.');
+        }
+
+        // 3. Tertiary fallback call: api.signData({ address, data, options })
+        try {
+          const mergedResult = await activeApi.signData({ address: targetAddress, ...strictPayload });
+          const mergedSig = extractSignature(mergedResult);
+          if (mergedSig) return mergedSig;
+        } catch {
+          // preserve original error
+        }
+      }
+
+      throw new Error(`1AM Wallet signing failed: ${errorMsg}`);
+    }
+
+    throw new Error('1AM Wallet signing failed: No signature returned from wallet.');
+  }
+
   public static async signChallenge(address: string, api?: MidnightConnectedAPI): Promise<string> {
     const normalizedAddr = normalizeAddress(address);
     if (!normalizedAddr) {
@@ -153,62 +264,16 @@ export class OneAmConnector {
     const nonce = Math.random().toString(36).substring(2, 15);
     const challenge = generateChallenge(normalizedAddr, nonce);
 
-    const activeApi = api || this.connectedApi;
-    if (!activeApi || typeof activeApi.signData !== 'function') {
-      throw new Error('1AM Wallet signature provider not available. Please ensure wallet is connected.');
-    }
-
-    // 1AM Wallet signData payload schema:
-    // Requires: { data: string, options: { encoding: "text" | "hex" | "base64" } }
-    const signPayload: SignDataPayload = {
-      data: challenge,
-      options: {
-        encoding: 'text'
-      }
-    };
-
-    const extractSignature = (res: unknown): string | null => {
-      if (!res) return null;
-      if (typeof res === 'string' && res.length > 0) return res;
-      if (typeof res === 'object') {
-        const obj = res as Record<string, unknown>;
-        if (typeof obj.signature === 'string') return obj.signature;
-        if (typeof obj.sig === 'string') return obj.sig;
-        if (typeof obj.data === 'string') return obj.data;
-      }
-      return null;
-    };
-
-    try {
-      // 1AM Wallet standard call: api.signData(payload)
-      const result = await activeApi.signData(signPayload);
-      const sig = extractSignature(result);
-      if (sig) return sig;
-      throw new Error('Signature response was empty or invalid.');
-    } catch (err: unknown) {
-      const errorMsg = err instanceof Error ? err.message : String(err);
-      if (
-        errorMsg.includes('rejected') ||
-        errorMsg.includes('User rejected') ||
-        errorMsg.includes('cancelled') ||
-        errorMsg.includes('declined')
-      ) {
-        throw new Error('Signature request was rejected in 1AM Wallet.');
-      }
-
-      // If the specific provider implementation required (address, payload) instead of (payload)
-      if (errorMsg.includes('requires') || errorMsg.includes('Invalid sign data payload')) {
-        try {
-          const fallbackResult = await activeApi.signData(normalizedAddr, signPayload);
-          const fallbackSig = extractSignature(fallbackResult);
-          if (fallbackSig) return fallbackSig;
-        } catch {
-          // preserve original error
+    return await this.signData(
+      normalizedAddr,
+      {
+        data: challenge,
+        options: {
+          encoding: 'text'
         }
-      }
-
-      throw new Error(`1AM Wallet signing failed: ${errorMsg}`);
-    }
+      },
+      api
+    );
   }
 
   public static getConnectedApi(): MidnightConnectedAPI | null {

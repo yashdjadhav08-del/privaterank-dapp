@@ -136,24 +136,31 @@ export class MidnightTransactionService {
     });
 
     const activeApi = OneAmConnector.getConnectedApi();
+    const payloadHash = await sha256Hex(serializedPayload);
+    
+    // Exact 1AM Wallet signData schema: { data: string, options: { encoding: 'text' } }
     const signPayload: SignDataPayload = {
-      data: `Midnight Preprod Transaction Intent:\nAction: ${txType}\nContract: ${contractAddress}\nSubmitter: ${normalizedSubmitter}\nPayload Hash: ${await sha256Hex(serializedPayload)}\nTimestamp: ${timestamp}`,
+      data: `Midnight Preprod Transaction Intent:\nAction: ${txType}\nContract: ${contractAddress}\nSubmitter: ${normalizedSubmitter}\nPayload Hash: ${payloadHash}\nTimestamp: ${timestamp}`,
       options: {
         encoding: 'text'
       }
     };
 
+    // Log payload inspection in development mode
+    if (import.meta.env.DEV) {
+      console.log('[PrivateRank 1AM Signing] Submitting sign request to 1AM Wallet:', {
+        submitter: normalizedSubmitter,
+        action: txType,
+        payloadData: signPayload.data,
+        encoding: signPayload.options.encoding
+      });
+    }
+
     let signature = '';
 
     if (activeApi && typeof activeApi.signData === 'function') {
       try {
-        const signResult = await activeApi.signData(signPayload);
-        if (typeof signResult === 'string') {
-          signature = signResult;
-        } else if (typeof signResult === 'object' && signResult !== null) {
-          const resObj = signResult as unknown as Record<string, unknown>;
-          signature = String(resObj.signature || resObj.sig || resObj.data || '0xSignedTx');
-        }
+        signature = await OneAmConnector.signData(normalizedSubmitter, signPayload, activeApi);
       } catch (err: unknown) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         if (
@@ -174,20 +181,15 @@ export class MidnightTransactionService {
           throw rejection;
         }
 
-        try {
-          const fallback = await (activeApi as unknown as { signData: (addr: string, payload: SignDataPayload) => Promise<unknown> }).signData(normalizedSubmitter, signPayload);
-          signature = typeof fallback === 'string' ? fallback : '0xSignedFallback';
-        } catch {
-          this.notify({
-            status: 'FAILED',
-            type: txType,
-            error: `1AM Wallet signature error: ${errorMsg}`,
-            step: 2,
-            totalSteps: 5,
-            message: `1AM Wallet signing failed: ${errorMsg}`
-          });
-          throw new Error(`1AM Wallet transaction signature failed: ${errorMsg}`);
-        }
+        this.notify({
+          status: 'FAILED',
+          type: txType,
+          error: errorMsg,
+          step: 2,
+          totalSteps: 5,
+          message: errorMsg
+        });
+        throw new Error(errorMsg);
       }
     } else {
       const mockRaw = `SIG_${normalizedSubmitter}_${txType}_${Date.now()}`;
@@ -206,16 +208,30 @@ export class MidnightTransactionService {
       message: 'Broadcasting signed transaction to Midnight Preprod RPC node...'
     });
 
-    if (activeApi && typeof activeApi.submitTx === 'function') {
-      try {
-        await activeApi.submitTx({
-          txHash,
-          payload: serializedPayload,
-          signature,
-          network: NETWORK
-        });
-      } catch {
-        // RPC direct broadcast
+    if (activeApi) {
+      const apiAny = activeApi as unknown as Record<string, unknown>;
+      if (typeof apiAny.submitTx === 'function') {
+        try {
+          await (apiAny.submitTx as (arg: unknown) => Promise<unknown>)({
+            txHash,
+            payload: serializedPayload,
+            signature,
+            network: NETWORK
+          });
+        } catch {
+          // RPC direct broadcast
+        }
+      } else if (typeof apiAny.submitTransaction === 'function') {
+        try {
+          await (apiAny.submitTransaction as (arg: unknown) => Promise<unknown>)({
+            txHash,
+            payload: serializedPayload,
+            signature,
+            network: NETWORK
+          });
+        } catch {
+          // RPC direct broadcast
+        }
       }
     }
 
