@@ -366,6 +366,23 @@ export class MidnightTransactionService {
   }
 
   /**
+   * Delete / Archive Completed Tournament on Midnight Preprod via 1AM Wallet
+   */
+  public static async deleteTournament(
+    tournamentId: string,
+    organizerAddress: string
+  ): Promise<{ tournament: Tournament; receipt: TransactionReceipt }> {
+    const { result, receipt } = await this.executeOnChainTransaction(
+      'DELETE_TOURNAMENT',
+      organizerAddress,
+      { tournamentId },
+      () => ContractService.deleteTournament(tournamentId, organizerAddress).tournament
+    );
+
+    return { tournament: result, receipt };
+  }
+
+  /**
    * Submit Solo Application with ZK Proof on Midnight Preprod via 1AM Wallet
    */
   public static async submitApplication(params: {

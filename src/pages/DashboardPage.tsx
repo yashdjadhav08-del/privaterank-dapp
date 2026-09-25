@@ -10,6 +10,7 @@ import {
   GameCategory,
   LocationType, 
   RankTier, 
+  Tournament,
   TournamentLocation, 
   TournamentSchedule, 
   TournamentType 
@@ -30,7 +31,8 @@ import {
   Shield,
   Clock,
   Sparkles,
-  AlertCircle
+  AlertCircle,
+  Trash2
 } from 'lucide-react';
 
 interface DashboardPageProps {
@@ -44,6 +46,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
     applications, 
     teams,
     createTournament, 
+    deleteTournament,
     reviewApplication,
     txProgress,
     txReceipt,
@@ -51,6 +54,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
   } = useTournament();
 
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [tournamentToDelete, setTournamentToDelete] = useState<Tournament | null>(null);
+  const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Form State
   const [newTourneyName, setNewTourneyName] = useState('');
@@ -215,6 +221,23 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
     });
   };
 
+  const handleConfirmDelete = async () => {
+    if (!tournamentToDelete || !authState.unshieldedAddress) return;
+    setIsDeleting(true);
+    setFormError(null);
+    try {
+      await deleteTournament(tournamentToDelete.id, authState.unshieldedAddress);
+      setDeleteNotice(`Tournament "${tournamentToDelete.name}" archived successfully.`);
+      setTournamentToDelete(null);
+      setTimeout(() => setDeleteNotice(null), 5000);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Tournament deletion failed';
+      setFormError(msg);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   if (!isConnected) {
     return (
       <div style={{ maxWidth: '800px', margin: '60px auto', padding: '20px', textAlign: 'center' }}>
@@ -260,6 +283,26 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '30px 20px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+      {/* Delete Notice Banner */}
+      {deleteNotice && (
+        <div
+          style={{
+            padding: '12px 18px',
+            borderRadius: '10px',
+            background: 'rgba(16, 185, 129, 0.15)',
+            border: '1px solid rgba(16, 185, 129, 0.4)',
+            color: '#6ee7b7',
+            fontSize: '0.9rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px'
+          }}
+        >
+          <CheckCircle2 size={18} />
+          <span>{deleteNotice}</span>
+        </div>
+      )}
+
       {/* Top Header Card */}
       <div
         className="glass-panel"
@@ -585,14 +628,34 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                       </div>
                     </div>
 
-                    <div style={{ display: 'flex', gap: '8px' }}>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
                       <button
                         onClick={() => onNavigate('game_details', { tournamentId: tourney.id })}
                         className="btn-secondary"
                         style={{ padding: '6px 14px', fontSize: '0.8rem' }}
                       >
-                        Manage
+                        View Details
                       </button>
+                      {tourney.status === 'COMPLETED' && (
+                        <button
+                          onClick={() => setTournamentToDelete(tourney)}
+                          style={{
+                            padding: '6px 14px',
+                            fontSize: '0.8rem',
+                            background: 'rgba(239, 68, 68, 0.15)',
+                            border: '1px solid rgba(239, 68, 68, 0.4)',
+                            color: '#f87171',
+                            borderRadius: '6px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            fontWeight: 600
+                          }}
+                        >
+                          <Trash2 size={13} /> Delete Tournament
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
@@ -1108,6 +1171,100 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
             </div>
           </form>
         </Modal>
+      )}
+
+      {/* Delete Tournament Confirmation Modal */}
+      {tournamentToDelete && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            backgroundColor: 'rgba(5, 8, 16, 0.88)',
+            backdropFilter: 'blur(10px)',
+            zIndex: 9999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px'
+          }}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              maxWidth: '480px',
+              width: '100%',
+              padding: '32px 26px',
+              borderRadius: '16px',
+              border: '1px solid rgba(239, 68, 68, 0.35)',
+              background: 'linear-gradient(180deg, rgba(24, 13, 20, 0.98) 0%, rgba(12, 9, 20, 0.98) 100%)',
+              boxShadow: '0 0 45px rgba(239, 68, 68, 0.25)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px', color: '#ef4444' }}>
+              <AlertCircle size={28} />
+              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#f8fafc', margin: 0 }}>
+                Delete Tournament?
+              </h2>
+            </div>
+
+            <p style={{ fontSize: '0.9rem', color: '#94a3b8', lineHeight: 1.5, marginBottom: '16px' }}>
+              This tournament has already ended.
+            </p>
+
+            <div
+              style={{
+                background: 'rgba(0, 0, 0, 0.45)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+                borderRadius: '10px',
+                padding: '12px 16px',
+                marginBottom: '16px'
+              }}
+            >
+              <div style={{ fontSize: '0.72rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Tournament:
+              </div>
+              <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc', marginTop: '2px' }}>
+                {tournamentToDelete.name}
+              </div>
+            </div>
+
+            <p style={{ fontSize: '0.85rem', color: '#cbd5e1', lineHeight: 1.5, marginBottom: '24px' }}>
+              This action will remove the tournament from the active tournament list.
+              <br />
+              <strong>Are you sure?</strong>
+            </p>
+
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                type="button"
+                onClick={() => setTournamentToDelete(null)}
+                disabled={isDeleting}
+                className="btn-secondary"
+                style={{ padding: '8px 20px', fontSize: '0.9rem' }}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="btn-danger"
+                style={{
+                  padding: '8px 20px',
+                  fontSize: '0.9rem',
+                  background: '#ef4444',
+                  color: '#ffffff',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontWeight: 700,
+                  cursor: isDeleting ? 'not-allowed' : 'pointer'
+                }}
+              >
+                {isDeleting ? 'Deleting...' : 'Delete Tournament'}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* On-Chain Transaction Progress Modal */}

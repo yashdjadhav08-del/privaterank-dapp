@@ -380,4 +380,68 @@ describe('Midnight ContractService & Solo/Team Tournament System', () => {
       });
     }).toThrow('Team is already finalized.');
   });
+
+  it('should enforce strict deletion rules: only COMPLETED tournaments can be deleted by their creator organizer', () => {
+    const otherOrganizer = 'addr_test1midnight_organizer_beta';
+    AuthService.registerOrganizer(otherOrganizer, 'Beta Organizer', 'Midnight Guild');
+
+    // 1. Active tournament (registration open) cannot be deleted
+    const activeTourney = ContractService.createTournament({
+      name: 'Active Clash',
+      description: 'Currently active',
+      gameTitle: 'Valorant',
+      organizerAddress,
+      organizerName: 'Main Organizer',
+      tournamentType: 'SOLO',
+      requirements: { minimumRank: RankTier.SILVER, minimumScore: 500, minimumWins: 2 },
+      prizePool: '2,000 DUST',
+      schedule: defaultSchedule,
+      location: defaultLocation
+    });
+
+    expect(() => {
+      ContractService.deleteTournament(activeTourney.id, organizerAddress);
+    }).toThrow(/Deletion Restricted: Tournament cannot be deleted/);
+
+    // 2. Completed tournament (past end date)
+    const completedSchedule: TournamentSchedule = {
+      registrationStart: new Date(Date.now() - 86400000 * 10).toISOString(),
+      registrationEnd: new Date(Date.now() - 86400000 * 8).toISOString(),
+      tournamentStart: new Date(Date.now() - 86400000 * 5).toISOString(),
+      tournamentEnd: new Date(Date.now() - 86400000 * 2).toISOString() // Ended 2 days ago
+    };
+
+    const completedTourney = ContractService.createTournament({
+      name: 'Completed Valorant Cup',
+      description: 'Championship finished',
+      gameTitle: 'Valorant',
+      organizerAddress,
+      organizerName: 'Main Organizer',
+      tournamentType: 'SOLO',
+      requirements: { minimumRank: RankTier.GOLD, minimumScore: 1000, minimumWins: 5 },
+      prizePool: '10,000 DUST',
+      schedule: completedSchedule,
+      location: defaultLocation
+    });
+
+    expect(ContractService.deriveTournamentStatus(completedTourney)).toBe('COMPLETED');
+
+    // Unauthorized organizer cannot delete
+    expect(() => {
+      ContractService.deleteTournament(completedTourney.id, otherOrganizer);
+    }).toThrow('Unauthorized: Only the creator organizer can delete this tournament.');
+
+    // Creator organizer can delete completed tournament
+    const delRes = ContractService.deleteTournament(completedTourney.id, organizerAddress);
+    expect(delRes.tournament.status).toBe('ARCHIVED');
+    expect(delRes.message).toBe('Tournament archived successfully.');
+
+    // Active listing should not include the archived tournament
+    const activeList = ContractService.listTournaments();
+    expect(activeList.find(t => t.id === completedTourney.id)).toBeUndefined();
+
+    // Querying with includeArchived returns it
+    const fullList = ContractService.listTournaments(undefined, true);
+    expect(fullList.find(t => t.id === completedTourney.id)?.status).toBe('ARCHIVED');
+  });
 });

@@ -7,7 +7,9 @@ pragma language_version >= 0.1.0;
 export enum TournamentStatus {
   DRAFT,
   OPEN,
-  CLOSED
+  CLOSED,
+  COMPLETED,
+  ARCHIVED
 }
 
 export enum ApplicationStatus {
@@ -111,6 +113,18 @@ export circuit closeTournament(tournamentId: Bytes<32>): [] {
   assert tourney.organizer == caller();
 
   tourney.status = TournamentStatus.CLOSED;
+  tournaments.insert(tournamentId, tourney);
+}
+
+// Organizer Deletes / Archives Completed Tournament
+export circuit deleteTournament(tournamentId: Bytes<32>): [] {
+  assert tournaments.member(tournamentId);
+  let tourney = tournaments.lookup(tournamentId);
+  assert tourney.organizer == caller();
+  // Enforce tournament is completed/over before deletion
+  assert tourney.status == TournamentStatus.COMPLETED || tourney.status == TournamentStatus.CLOSED;
+
+  tourney.status = TournamentStatus.ARCHIVED;
   tournaments.insert(tournamentId, tourney);
 }
 

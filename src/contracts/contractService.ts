@@ -115,7 +115,7 @@ export class ContractService {
 
   // Derive dynamic tournament status based on schedule & explicit state
   public static deriveTournamentStatus(tournament: Tournament): TournamentStatus {
-    if (tournament.status === 'CLOSED' || tournament.status === 'CANCELLED') {
+    if (tournament.status === 'ARCHIVED' || tournament.status === 'CLOSED' || tournament.status === 'CANCELLED') {
       return tournament.status;
     }
 
@@ -140,15 +140,18 @@ export class ContractService {
 
   // --- TOURNAMENT QUERIES ---
 
-  public static listTournaments(filterStatus?: TournamentStatus): Tournament[] {
+  public static listTournaments(filterStatus?: TournamentStatus, includeArchived = false): Tournament[] {
     const list = this.getTournaments().map(t => ({
       ...t,
       status: this.deriveTournamentStatus(t)
     }));
+    const activeList = includeArchived || filterStatus === 'ARCHIVED' 
+      ? list 
+      : list.filter(t => t.status !== 'ARCHIVED');
     if (filterStatus) {
-      return list.filter(t => t.status === filterStatus);
+      return activeList.filter(t => t.status === filterStatus);
     }
-    return list;
+    return activeList;
   }
 
   public static getTournamentById(id: string): Tournament | null {
@@ -303,6 +306,30 @@ export class ContractService {
     tournaments[index].status = 'CLOSED';
     this.saveTournaments(tournaments);
     return tournaments[index];
+  }
+
+  public static deleteTournament(tournamentId: string, organizerAddress: string): { tournament: Tournament; message: string } {
+    if (!AuthService.isOrganizerAuthorized(organizerAddress)) {
+      throw new Error('Access Denied: Caller address is not an authorized organizer.');
+    }
+
+    const tournaments = this.getTournaments();
+    const index = tournaments.findIndex(t => t.id === tournamentId);
+    if (index === -1) throw new Error('Tournament not found');
+
+    const tourney = tournaments[index];
+    if (!safeAddressCompare(tourney.organizerAddress, organizerAddress)) {
+      throw new Error('Unauthorized: Only the creator organizer can delete this tournament.');
+    }
+
+    const currentStatus = this.deriveTournamentStatus(tourney);
+    if (currentStatus !== 'COMPLETED') {
+      throw new Error(`Deletion Restricted: Tournament cannot be deleted while in '${currentStatus}' status. Deletion is only permitted for COMPLETED tournaments.`);
+    }
+
+    tournaments[index].status = 'ARCHIVED';
+    this.saveTournaments(tournaments);
+    return { tournament: tournaments[index], message: 'Tournament archived successfully.' };
   }
 
   // --- SOLO TOURNAMENT APPLICATION ---

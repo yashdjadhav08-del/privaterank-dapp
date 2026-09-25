@@ -250,4 +250,53 @@ describe('MidnightTransactionService — 1AM Wallet & Midnight Preprod On-Chain 
     expect(result.receipt.action).toBe('SUBMIT_APPLICATION');
     expect(result.receipt.status).toBe('CONFIRMED');
   });
+
+  it('should execute DELETE_TOURNAMENT on-chain with 1AM Wallet signing and confirmation', async () => {
+    // 1. Create a tournament whose end date has passed (COMPLETED)
+    const completedSchedule: TournamentSchedule = {
+      registrationStart: new Date(Date.now() - 86400000 * 10).toISOString(),
+      registrationEnd: new Date(Date.now() - 86400000 * 8).toISOString(),
+      tournamentStart: new Date(Date.now() - 86400000 * 5).toISOString(),
+      tournamentEnd: new Date(Date.now() - 86400000 * 2).toISOString()
+    };
+
+    const tourney = ContractService.createTournament({
+      name: 'Completed Rocket League Cup',
+      description: 'Finished tournament',
+      gameTitle: 'Rocket League',
+      organizerAddress,
+      organizerName: 'Alpha Org',
+      tournamentType: 'SOLO',
+      requirements: {
+        minimumRank: RankTier.GOLD,
+        minimumScore: 1000,
+        minimumWins: 5
+      },
+      prizePool: '3,000 DUST',
+      schedule: completedSchedule,
+      location: defaultLocation
+    });
+
+    const stepsObserved: string[] = [];
+    const unsubscribe = MidnightTransactionService.subscribeProgress(p => {
+      stepsObserved.push(p.status);
+    });
+
+    const result = await MidnightTransactionService.deleteTournament(tourney.id, organizerAddress);
+    unsubscribe();
+
+    expect(result.tournament).toBeDefined();
+    expect(result.tournament.status).toBe('ARCHIVED');
+    expect(result.receipt).toBeDefined();
+    expect(result.receipt.action).toBe('DELETE_TOURNAMENT');
+    expect(result.receipt.status).toBe('CONFIRMED');
+    expect(result.receipt.txHash).toMatch(/^0x[a-f0-9]{64}$/);
+    expect(result.receipt.network).toBe('Midnight Preprod Testnet');
+
+    expect(stepsObserved).toContain('PREPARING');
+    expect(stepsObserved).toContain('AWAITING_WALLET_APPROVAL');
+    expect(stepsObserved).toContain('SUBMITTING');
+    expect(stepsObserved).toContain('CONFIRMING');
+    expect(stepsObserved).toContain('CONFIRMED');
+  });
 });

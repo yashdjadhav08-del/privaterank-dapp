@@ -33,7 +33,8 @@ export type TournamentStatus =
   | 'CANCELLED'
   | 'OPEN'
   | 'DRAFT'
-  | 'CLOSED';
+  | 'CLOSED'
+  | 'ARCHIVED';
 
 export type ApplicationStatus = 
   | 'DRAFT'
@@ -219,6 +220,7 @@ export type TransactionType =
   | 'CREATE_TOURNAMENT'
   | 'PUBLISH_TOURNAMENT'
   | 'CLOSE_TOURNAMENT'
+  | 'DELETE_TOURNAMENT'
   | 'SUBMIT_APPLICATION'
   | 'REVIEW_APPLICATION'
   | 'CREATE_TEAM'

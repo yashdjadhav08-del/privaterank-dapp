@@ -49,6 +49,7 @@ interface TournamentContextType {
   }) => Promise<{ tournament: Tournament; receipt: TransactionReceipt }>;
   publishTournament: (tournamentId: string, organizerAddress: string) => Promise<{ tournament: Tournament; receipt: TransactionReceipt }>;
   closeTournament: (tournamentId: string, organizerAddress: string) => Promise<{ tournament: Tournament; receipt: TransactionReceipt }>;
+  deleteTournament: (tournamentId: string, organizerAddress: string) => Promise<{ tournament: Tournament; receipt: TransactionReceipt }>;
   generateProof: (params: {
     tournament: Tournament;
     gamingCredentials: GamingCredentials;
@@ -217,6 +218,26 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       return res;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to close tournament';
+      setError(msg);
+      throw err;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const deleteTournament = async (
+    tournamentId: string,
+    organizerAddress: string
+  ): Promise<{ tournament: Tournament; receipt: TransactionReceipt }> => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await MidnightTransactionService.deleteTournament(tournamentId, organizerAddress);
+      setTxReceipt(res.receipt);
+      refreshData();
+      return res;
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : 'Failed to delete tournament';
       setError(msg);
       throw err;
     } finally {
@@ -412,6 +433,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         createTournament,
         publishTournament,
         closeTournament,
+        deleteTournament,
         generateProof,
         submitApplication,
         createTeam,
