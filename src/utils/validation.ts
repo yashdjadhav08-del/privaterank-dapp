@@ -49,7 +49,8 @@ export function validatePrizePool(prize: string): string | null {
   const clean = prize.replace(/[₹$,\s]/g, '').trim();
   if (!clean) return 'Please specify a valid prize amount.';
   const num = Number(clean);
-  if (isNaN(num) || num < 0) return 'Prize pool must be a non-negative number.';
+  if (isNaN(num)) return 'Please specify a valid prize amount.';
+  if (num < 0) return 'Prize pool must be a non-negative number.';
   return null;
 }
 
