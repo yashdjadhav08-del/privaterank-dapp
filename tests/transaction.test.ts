@@ -360,6 +360,55 @@ describe('MidnightTransactionService — 1AM Wallet & Midnight Preprod On-Chain 
     expect(stepsObserved).toContain('CONFIRMED');
   });
 
+  it('should close an OPEN tournament on-chain first, then archive on-chain with 1AM Wallet signing', async () => {
+    const openSchedule: TournamentSchedule = {
+      registrationStart: new Date(Date.now() - 3600000).toISOString(),
+      registrationEnd: new Date(Date.now() + 86400000 * 3).toISOString(),
+      tournamentStart: new Date(Date.now() + 86400000 * 4).toISOString(),
+      tournamentEnd: new Date(Date.now() + 86400000 * 5).toISOString()
+    };
+
+    const tourney = ContractService.createTournament({
+      name: 'gm pro',
+      description: 'Active open tournament',
+      gameTitle: 'Valorant',
+      organizerAddress,
+      organizerName: 'Alpha Org',
+      tournamentType: 'SOLO',
+      requirements: {
+        minimumRank: RankTier.GOLD,
+        minimumScore: 1000,
+        minimumWins: 5
+      },
+      prizePool: '5,000 DUST',
+      schedule: openSchedule,
+      location: defaultLocation
+    });
+
+    expect(tourney.status).toBe('OPEN');
+
+    const actionsObserved: string[] = [];
+    const unsubscribe = MidnightTransactionService.subscribeProgress(p => {
+      actionsObserved.push(`${p.type}:${p.status}`);
+    });
+
+    const result = await MidnightTransactionService.deleteTournament(tourney.id, organizerAddress);
+    unsubscribe();
+
+    expect(result.tournament).toBeDefined();
+    expect(result.tournament.status).toBe('ARCHIVED');
+    expect(result.receipt).toBeDefined();
+    expect(result.receipt.action).toBe('DELETE_TOURNAMENT');
+    expect(result.receipt.status).toBe('CONFIRMED');
+    expect(result.receipt.txHash).toMatch(/^0x[a-f0-9]{64}$/);
+
+    // Verify both CLOSE_TOURNAMENT and DELETE_TOURNAMENT progressed through lifecycle
+    expect(actionsObserved).toContain('CLOSE_TOURNAMENT:PREPARING');
+    expect(actionsObserved).toContain('CLOSE_TOURNAMENT:CONFIRMED');
+    expect(actionsObserved).toContain('DELETE_TOURNAMENT:PREPARING');
+    expect(actionsObserved).toContain('DELETE_TOURNAMENT:CONFIRMED');
+  });
+
   it('should reject tournament creation honestly when contract is not deployed to Midnight Preprod', async () => {
     __setMockDeploymentStatus({ isDeployed: false, contractAddress: '', state: null });
 
@@ -407,6 +456,157 @@ describe('MidnightTransactionService — 1AM Wallet & Midnight Preprod On-Chain 
     // 3. Clear role on disconnect
     AuthService.clearRole();
     expect(AuthService.getSelectedRole()).toBeNull();
+  });
+
+  it('should successfully review and APPROVE a participant application via 1AM Wallet signing', async () => {
+    AuthService.selectRole('ORGANIZER');
+    const orgAddress = 'addr_test1midnight_organizer_alpha';
+
+    // 1. Create a tournament
+    const tourney = ContractService.createTournament({
+      name: 'Approval Flow Championship',
+      description: 'Testing Organizer Approve Flow',
+      gameTitle: 'Free Fire',
+      category: 'Battle Royale',
+      gameImage: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80',
+      organizerAddress: orgAddress,
+      organizerName: 'Alpha Org',
+      tournamentType: 'SOLO',
+      teamSize: 1,
+      maxParticipants: 16,
+      requirements: {
+        minimumRank: RankTier.GOLD,
+        minimumScore: 1000,
+        minimumWins: 5
+      },
+      prizePool: '5,000 DUST',
+      schedule: defaultSchedule,
+      location: defaultLocation
+    });
+
+    // 2. Player applies with valid ZK proof
+    AuthService.selectRole('PLAYER');
+    const playerAddress = 'addr_test1midnight_player_alpha';
+    const playerCreds = {
+      rank: RankTier.PLATINUM,
+      score: 1600,
+      wins: 12,
+      losses: 3,
+      achievements: ['Champion'],
+      gameTitle: 'Free Fire',
+      verifiedAt: new Date().toISOString()
+    };
+    const proof = await ZkProverService.generateEligibilityProof({
+      tournamentId: tourney.id,
+      requirements: tourney.requirements,
+      gamingCredentials: playerCreds,
+      personalInfo: { fullName: 'Player Alpha', email: 'alpha@example.com', phone: '1234567890', country: 'US', dateOfBirth: '2000-01-01' },
+      walletAddress: playerAddress
+    });
+
+    const app = ContractService.submitApplication({
+      tournamentId: tourney.id,
+      playerWalletAddress: playerAddress,
+      anonymousPlayerId: 'PR-APPROVE-TEST',
+      gamingCredentials: playerCreds,
+      proof
+    });
+
+    expect(app.status).toBe('PENDING_REVIEW');
+
+    // 3. Organizer reviews & approves via 1AM Wallet
+    AuthService.selectRole('ORGANIZER');
+    const stepsObserved: string[] = [];
+    const unsubscribe = MidnightTransactionService.subscribeProgress(p => {
+      if (p.type === 'REVIEW_APPLICATION') {
+        stepsObserved.push(p.status);
+      }
+    });
+
+    const res = await MidnightTransactionService.reviewApplication({
+      applicationId: app.id,
+      organizerAddress: orgAddress,
+      decision: 'APPROVE'
+    });
+
+    unsubscribe();
+
+    expect(res.application.status).toBe('APPROVED');
+    expect((res.application as any).signature).toBeDefined();
+    expect(res.receipt.action).toBe('REVIEW_APPLICATION');
+    expect(res.receipt.status).toBe('CONFIRMED');
+    expect(res.receipt.txHash).toMatch(/^0x[a-f0-9]{64}$/);
+    expect(stepsObserved).toContain('PREPARING');
+    expect(stepsObserved).toContain('AWAITING_WALLET_APPROVAL');
+    expect(stepsObserved).toContain('CONFIRMED');
+  });
+
+  it('should cleanly abort application review when user rejects in 1AM Wallet', async () => {
+    AuthService.selectRole('ORGANIZER');
+    const orgAddress = 'addr_test1midnight_organizer_alpha';
+
+    const tourney = ContractService.createTournament({
+      name: 'Rejection Flow Tournament',
+      description: 'Testing 1AM Wallet Rejection',
+      gameTitle: 'Free Fire',
+      category: 'Battle Royale',
+      gameImage: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80',
+      organizerAddress: orgAddress,
+      organizerName: 'Alpha Org',
+      tournamentType: 'SOLO',
+      teamSize: 1,
+      maxParticipants: 16,
+      requirements: { minimumRank: RankTier.BRONZE, minimumScore: 0, minimumWins: 0 },
+      prizePool: '1,000 DUST',
+      schedule: defaultSchedule,
+      location: defaultLocation
+    });
+
+    AuthService.selectRole('PLAYER');
+    const playerAddress = 'addr_test1midnight_player_beta';
+    const playerCreds = {
+      rank: RankTier.SILVER,
+      score: 500,
+      wins: 3,
+      losses: 1,
+      achievements: [],
+      gameTitle: 'Free Fire',
+      verifiedAt: new Date().toISOString()
+    };
+    const proof = await ZkProverService.generateEligibilityProof({
+      tournamentId: tourney.id,
+      requirements: tourney.requirements,
+      gamingCredentials: playerCreds,
+      personalInfo: { fullName: 'Player Beta', email: 'beta@example.com', phone: '1234567890', country: 'US', dateOfBirth: '2000-01-01' },
+      walletAddress: playerAddress
+    });
+
+    const app = ContractService.submitApplication({
+      tournamentId: tourney.id,
+      playerWalletAddress: playerAddress,
+      anonymousPlayerId: 'PR-REJECT-TEST',
+      gamingCredentials: playerCreds,
+      proof
+    });
+
+    AuthService.selectRole('ORGANIZER');
+    const mockApi = OneAmConnector.getConnectedApi() as any;
+    const originalSign = mockApi.signData;
+    mockApi.signData = vi.fn().mockRejectedValue(new Error('User rejected the transaction in 1AM Wallet'));
+
+    await expect(
+      MidnightTransactionService.reviewApplication({
+        applicationId: app.id,
+        organizerAddress: orgAddress,
+        decision: 'APPROVE'
+      })
+    ).rejects.toThrow('Transaction Cancelled: You rejected the review transaction in 1AM Wallet.');
+
+    mockApi.signData = originalSign;
+
+    // Verify application status is UNCHANGED (still PENDING_REVIEW)
+    const currentApp = ContractService.getApplications().find(a => a.id === app.id);
+    expect(currentApp?.status).toBe('PENDING_REVIEW');
   });
 });
 
