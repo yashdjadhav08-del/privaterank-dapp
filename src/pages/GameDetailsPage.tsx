@@ -62,7 +62,8 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
   const safeApplications = Array.isArray(applications) ? applications : [];
   const safeTeams = Array.isArray(teams) ? teams : [];
 
-  const tournament = (tournamentId && safeTournaments.find(t => t && t.id === tournamentId)) || (safeTournaments.length > 0 ? safeTournaments[0] : null);
+  const activeTournaments = safeTournaments.filter(t => t && t.status !== 'ARCHIVED');
+  const tournament = (tournamentId && safeTournaments.find(t => t && t.id === tournamentId)) || (activeTournaments.length > 0 ? activeTournaments[0] : null);
 
   useEffect(() => {
     if (tournament) {
@@ -137,6 +138,11 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
       return;
     }
 
+    if (tournament.status === 'ARCHIVED' || tournament.status === 'CLOSED') {
+      setErrorMessage(`This tournament is ${tournament.status.toLowerCase()} and is no longer accepting entries.`);
+      return;
+    }
+
     setIsProcessing(true);
     setErrorMessage(null);
     setSuccessMessage(null);
@@ -187,6 +193,11 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
   const handleCreateTeamSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTeamName.trim() || !authState.unshieldedAddress || !playerProfile) return;
+
+    if (tournament.status === 'ARCHIVED' || tournament.status === 'CLOSED') {
+      setErrorMessage(`This tournament is ${tournament.status.toLowerCase()} and is no longer accepting team creation.`);
+      return;
+    }
 
     setIsProcessing(true);
     setErrorMessage(null);
@@ -243,6 +254,11 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
 
     if (!playerProfile) {
       setErrorMessage('Player profile not initialized. Please reconnect your wallet.');
+      return;
+    }
+
+    if (tournament.status === 'ARCHIVED' || tournament.status === 'CLOSED') {
+      setErrorMessage(`This tournament is ${tournament.status.toLowerCase()} and is no longer accepting team joins.`);
       return;
     }
 
@@ -586,7 +602,11 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
             </div>
 
             <div>
-              {activeRole === 'ORGANIZER' ? (
+              {tournament.status === 'ARCHIVED' ? (
+                <div style={{ padding: '14px', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '8px', textAlign: 'center', color: '#f87171', fontSize: '0.85rem' }}>
+                  <strong>Tournament Archived</strong>: This tournament has been archived on Midnight Preprod and is closed to all entries.
+                </div>
+              ) : activeRole === 'ORGANIZER' ? (
                 <div style={{ padding: '12px', background: 'rgba(168, 85, 247, 0.12)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '8px', textAlign: 'center', color: '#c084fc', fontSize: '0.85rem' }}>
                   <strong>Organizer Wallet</strong>: Organizers cannot participate or apply to tournaments.
                 </div>
@@ -809,7 +829,11 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
                 </p>
               </div>
 
-              {activeRole === 'ORGANIZER' ? (
+              {tournament.status === 'ARCHIVED' ? (
+                <div style={{ padding: '6px 14px', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.3)', borderRadius: '6px', color: '#f87171', fontSize: '0.8rem' }}>
+                  Tournament is archived. Team creation is disabled.
+                </div>
+              ) : activeRole === 'ORGANIZER' ? (
                 <div style={{ padding: '6px 14px', background: 'rgba(168, 85, 247, 0.12)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '6px', color: '#c084fc', fontSize: '0.8rem' }}>
                   Organizer accounts cannot create or join teams.
                 </div>
@@ -844,7 +868,7 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
                   const isMyTeam = myTeam?.id === t.id;
                   const isFull = t.members.length >= t.teamSize;
                   const isFinalized = t.status === 'FINALIZED';
-                  const canJoin = activeRole !== 'ORGANIZER' && !myTeam && !isFull && !isFinalized;
+                  const canJoin = activeRole !== 'ORGANIZER' && !myTeam && !isFull && !isFinalized && tournament.status !== 'ARCHIVED' && tournament.status !== 'CLOSED';
 
                   return (
                     <div
