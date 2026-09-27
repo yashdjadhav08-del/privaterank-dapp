@@ -1,0 +1,265 @@
+{
+  "compiler-version": "0.31.1",
+  "language-version": "0.23.0",
+  "runtime-version": "0.16.0",
+  "circuits": [
+    {
+      "name": "createTournament",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "tournamentId",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "organizerKey",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "minRank",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        },
+        {
+          "name": "minScore",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 4294967295
+          }
+        },
+        {
+          "name": "minWins",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 4294967295
+          }
+        },
+        {
+          "name": "maxParticipants",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 4294967295
+          }
+        },
+        {
+          "name": "deadline",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 18446744073709551615
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "joinTournament",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "tournamentId",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "playerCommitment",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "playerRank",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 255
+          }
+        },
+        {
+          "name": "playerScore",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 4294967295
+          }
+        },
+        {
+          "name": "playerWins",
+          "type": {
+            "type-name": "Uint",
+            "maxval": 4294967295
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "closeTournament",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "tournamentId",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "organizerKey",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    },
+    {
+      "name": "archiveTournament",
+      "pure": false,
+      "proof": true,
+      "arguments": [
+        {
+          "name": "tournamentId",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        },
+        {
+          "name": "organizerKey",
+          "type": {
+            "type-name": "Bytes",
+            "length": 32
+          }
+        }
+      ],
+      "result-type": {
+        "type-name": "Tuple",
+        "types": [
+        ]
+      }
+    }
+  ],
+  "witnesses": [
+  ],
+  "contracts": [
+  ],
+  "ledger": [
+    {
+      "name": "tournaments",
+      "index": 0,
+      "exported": true,
+      "storage": "Map",
+      "key": {
+        "type-name": "Bytes",
+        "length": 32
+      },
+      "value": {
+        "type-name": "Struct",
+        "name": "Tournament",
+        "elements": [
+          {
+            "name": "organizer",
+            "type": {
+              "type-name": "Bytes",
+              "length": 32
+            }
+          },
+          {
+            "name": "minRank",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 255
+            }
+          },
+          {
+            "name": "minScore",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 4294967295
+            }
+          },
+          {
+            "name": "minWins",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 4294967295
+            }
+          },
+          {
+            "name": "maxParticipants",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 4294967295
+            }
+          },
+          {
+            "name": "deadline",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 18446744073709551615
+            }
+          },
+          {
+            "name": "status",
+            "type": {
+              "type-name": "Enum",
+              "name": "TournamentStatus",
+              "elements": [
+                "DRAFT",
+                "OPEN",
+                "CLOSED",
+                "COMPLETED",
+                "ARCHIVED"
+              ]
+            }
+          },
+          {
+            "name": "applicantCount",
+            "type": {
+              "type-name": "Uint",
+              "maxval": 4294967295
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "participants",
+      "index": 1,
+      "exported": true,
+      "storage": "Map",
+      "key": {
+        "type-name": "Bytes",
+        "length": 32
+      },
+      "value": {
+        "type-name": "Boolean"
+      }
+    }
+  ]
+}

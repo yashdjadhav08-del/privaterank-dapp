@@ -19,7 +19,7 @@ export class ZkProverService {
   public static async generateEligibilityProof(input: ProverWitnessInput): Promise<ZKProofPayload> {
     const { tournamentId, requirements, gamingCredentials, personalInfo, walletAddress } = input;
 
-    if (AuthService.isOrganizerAuthorized(walletAddress)) {
+    if (AuthService.isOrganizer()) {
       throw new Error('Access Restricted: Organizer wallets cannot generate player eligibility proofs.');
     }
 
@@ -118,3 +118,4 @@ export class ZkProverService {
     return { isValid: true };
   }
 }
+

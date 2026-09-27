@@ -3,18 +3,21 @@ import { useTournament } from '../context/TournamentContext';
 import { useWallet } from '../context/WalletContext';
 import { RankBadge } from '../components/common/RankBadge';
 import { StatusBadge } from '../components/common/StatusBadge';
-import { Users, Calendar, Trophy, ArrowRight, Flame, PlusCircle } from 'lucide-react';
+import { formatPrizePool } from '../utils/crypto';
+import { Users, Calendar, Trophy, ArrowRight, Flame, PlusCircle, AlertTriangle, Server } from 'lucide-react';
 
 interface HomePageProps {
   onNavigate: (view: string, extra?: { tournamentId?: string }) => void;
 }
 
 export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
-  const { tournaments } = useTournament();
-  const { authState, activeRole, isOrganizerAuthorized, registerOrganizerWallet, connectWallet } = useWallet();
+  const { tournaments, serverStatus, serverResponse } = useTournament();
+  const { authState, activeRole, selectRole, connectWallet } = useWallet();
 
   const safeTournaments = Array.isArray(tournaments) ? tournaments : [];
-  const openTournaments = safeTournaments.filter(t => t && t.status === 'OPEN');
+  const openTournaments = safeTournaments.filter(
+    t => t && t.status !== 'ARCHIVED' && t.status !== 'CLOSED' && t.status !== 'CANCELLED'
+  );
 
   return (
     <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '30px 20px', display: 'flex', flexDirection: 'column', gap: '36px' }}>
@@ -95,7 +98,58 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
           )}
         </div>
 
+        {/* Server Status Banner — shown when backend is unreachable */}
+        {serverStatus === 'unreachable' && (
+          <div style={{
+            borderRadius: '12px',
+            background: 'rgba(234, 179, 8, 0.08)',
+            border: '1px solid rgba(234, 179, 8, 0.3)',
+            padding: '12px 20px',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '10px',
+            color: '#fbbf24'
+          }}>
+            <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+            <div>
+              <strong style={{ fontSize: '0.85rem' }}>Backend Server Offline</strong>
+              <p style={{ fontSize: '0.8rem', margin: '2px 0 0', color: '#94a3b8' }}>
+                Start the backend: <code>node server/index.mjs</code> in a second terminal.
+                Tournaments from Midnight Preprod will then appear here for ALL wallets.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Server OK banner */}
+        {serverStatus === 'ok' && serverResponse && (
+          <div style={{
+            borderRadius: '10px',
+            background: 'rgba(0, 242, 254, 0.05)',
+            border: '1px solid rgba(0, 242, 254, 0.15)',
+            padding: '8px 16px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            fontSize: '0.78rem',
+            color: '#64748b'
+          }}>
+            <Server size={14} style={{ color: '#00f2fe', flexShrink: 0 }} />
+            <span>
+              <span style={{ color: '#00f2fe', fontWeight: 600 }}>Midnight Preprod</span>
+              {' · '}
+              {serverResponse.contractAddress
+                ? <span>Contract: <code style={{ color: '#94a3b8' }}>{serverResponse.contractAddress.slice(0, 16)}…</code></span>
+                : <span style={{ color: '#fbbf24' }}>Contract not set</span>
+              }
+              {' · '}
+              <span>{serverResponse.tournaments.length} tournament(s)</span>
+            </span>
+          </div>
+        )}
+
         {openTournaments.length === 0 ? (
+
           <div
             className="glass-panel"
             style={{
@@ -108,12 +162,34 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
             }}
           >
             <Trophy size={36} className="text-cyan-400" />
-            <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f8fafc' }}>
-              No Active Tournaments Available Yet
-            </h3>
-            <p style={{ fontSize: '0.85rem', color: '#94a3b8', maxWidth: '420px' }}>
-              Check back soon for upcoming competitive tournaments on the Midnight Network.
-            </p>
+            {serverStatus === 'unreachable' ? (
+              <>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f8fafc' }}>
+                  Unable to Load Tournaments from Midnight Preprod
+                </h3>
+                <p style={{ fontSize: '0.85rem', color: '#94a3b8', maxWidth: '480px' }}>
+                  The backend server is not running. Start it with <code>node server/index.mjs</code> in a separate terminal, then tournaments will appear here for both Organizer and Player wallets.
+                </p>
+              </>
+            ) : serverStatus === 'ok' && serverResponse && !serverResponse.contractAddress ? (
+              <>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f8fafc' }}>
+                  PrivateRank Contract Not Yet Configured
+                </h3>
+                <p style={{ fontSize: '0.85rem', color: '#94a3b8', maxWidth: '480px' }}>
+                  The backend server is running but has no PrivateRank contract address. Deploy the contract and register it via <code>POST /api/contract</code>.
+                </p>
+              </>
+            ) : (
+              <>
+                <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f8fafc' }}>
+                  No Active Tournaments Available Yet
+                </h3>
+                <p style={{ fontSize: '0.85rem', color: '#94a3b8', maxWidth: '420px' }}>
+                  No tournaments have been registered on Midnight Preprod yet. Create one as an Organizer.
+                </p>
+              </>
+            )}
             <div style={{ display: 'flex', gap: '10px', marginTop: '8px', flexWrap: 'wrap', justifyContent: 'center' }}>
               <button
                 onClick={() => onNavigate('explore')}
@@ -122,13 +198,13 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
               >
                 Explore Games & Tournaments
               </button>
-              {isOrganizerAuthorized && (
+              {activeRole === 'ORGANIZER' && (
                 <button
                   onClick={() => onNavigate('dashboard')}
                   className="btn-secondary"
                   style={{ padding: '8px 20px', fontSize: '0.85rem', borderColor: 'rgba(157, 78, 221, 0.4)' }}
                 >
-                  <PlusCircle size={15} /> Create Tournament (Organizer)
+                  <PlusCircle size={15} /> Create Tournament
                 </button>
               )}
             </div>
@@ -189,7 +265,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
                         Players: <strong style={{ color: '#f8fafc' }}>{tourney.applicantCount || 0} / {tourney.maxParticipants || 64}</strong>
                       </span>
                       <span style={{ color: '#fbbf24', fontWeight: 700 }}>
-                        {tourney.prizePool || 'TBD'}
+                        {formatPrizePool(tourney.prizePool)}
                       </span>
                     </div>
 

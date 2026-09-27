@@ -3,6 +3,7 @@ import { useTournament } from '../context/TournamentContext';
 import { GameCategory, RankTier } from '../types';
 import { RankBadge } from '../components/common/RankBadge';
 import { StatusBadge } from '../components/common/StatusBadge';
+import { formatPrizePool } from '../utils/crypto';
 import { Search, Users, Trophy, Calendar, ArrowRight, Filter } from 'lucide-react';
 
 interface ExplorePageProps {
@@ -122,8 +123,16 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onNavigate }) => {
 
       {/* Tournaments Grid */}
       {filteredTournaments.length === 0 ? (
-        <div className="glass-panel" style={{ padding: '50px 20px', textAlign: 'center', color: '#94a3b8' }}>
-          No tournaments found matching your search.
+        <div className="glass-panel" style={{ padding: '60px 24px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px', color: '#94a3b8' }}>
+          <Trophy size={40} className="text-cyan-400 opacity-60" />
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#f8fafc' }}>
+            No Active Tournaments Available Yet
+          </h3>
+          <p style={{ color: '#94a3b8', fontSize: '0.85rem', maxWidth: '420px' }}>
+            {safeTournaments.length === 0 
+              ? 'No tournaments have been registered on Midnight Preprod yet. Organizers can create tournaments via the Organizer Dashboard.'
+              : 'No tournaments found matching your search filter.'}
+          </p>
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '20px' }}>
@@ -199,7 +208,7 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onNavigate }) => {
                       : `Players: ${tourney.applicantCount || 0} / ${tourney.maxParticipants || 64}`}
                   </span>
                   <span style={{ color: '#fbbf24', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <Trophy size={14} /> {tourney.prizePool || 'TBD'}
+                    <Trophy size={14} /> {formatPrizePool(tourney.prizePool)}
                   </span>
                 </div>
 

@@ -17,6 +17,8 @@ import {
 import { ContractService } from '../contracts/contractService';
 import { ZkProverService } from '../contracts/zkProver';
 import { MidnightTransactionService } from '../contracts/midnightTransactionService';
+import { fetchTournamentsFromServer, checkServerHealth, registerTournamentWithServer, type TournamentsResponse } from '../services/backendApi';
+import { formatPrizePool } from '../utils/crypto';
 
 interface TournamentContextType {
   tournaments: Tournament[];
@@ -27,6 +29,8 @@ interface TournamentContextType {
   error: string | null;
   txProgress: TransactionProgress | null;
   txReceipt: TransactionReceipt | null;
+  serverStatus: 'ok' | 'unreachable' | 'unknown';
+  serverResponse: TournamentsResponse | null;
   resetTxState: () => void;
   refreshData: () => void;
   createTournament: (params: {
@@ -43,6 +47,7 @@ interface TournamentContextType {
     maxParticipants?: number;
     requirements: TournamentRequirements;
     prizePool: string;
+    prizeDetails?: string;
     schedule: TournamentSchedule;
     location: TournamentLocation;
     rules?: string[];
@@ -107,6 +112,8 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [serverStatus, setServerStatus] = useState<'ok' | 'unreachable' | 'unknown'>('unknown');
+  const [serverResponse, setServerResponse] = useState<TournamentsResponse | null>(null);
   const [userProofs, setUserProofs] = useState<ZKProofPayload[]>(() => {
     try {
       const stored = localStorage.getItem(PROOFS_STORAGE_KEY);
@@ -121,18 +128,115 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [txProgress, setTxProgress] = useState<TransactionProgress | null>(null);
   const [txReceipt, setTxReceipt] = useState<TransactionReceipt | null>(null);
 
-  const refreshData = useCallback(() => {
-    setTournaments(ContractService.listTournaments());
+  const refreshData = useCallback(async () => {
+    // PRIMARY: Try the backend server (source of truth for both Organizer + Player)
+    try {
+      const response = await fetchTournamentsFromServer();
+      setServerStatus('ok');
+      setServerResponse(response);
+
+      // Map server tournaments to the app's Tournament type
+      const mapped: Tournament[] = response.tournaments.map(st => {
+        const item: Tournament = {
+          id: st.id,
+          name: st.name,
+          description: st.description,
+          gameTitle: st.gameTitle,
+          category: (st.category as import('../types').GameCategory) || 'Battle Royale',
+          gameImage: st.gameImage,
+          organizerAddress: st.organizerAddress,
+          organizerName: st.organizerName,
+          tournamentType: (st.tournamentType as import('../types').TournamentType) || 'SOLO',
+          teamSize: st.teamSize,
+          maxTeams: st.maxTeams,
+          currentTeams: 0,
+          requirements: st.requirements,
+          prizePool: formatPrizePool(st.prizePool),
+          prizeDetails: st.prizeDetails,
+          maxParticipants: st.maxParticipants,
+          currentParticipants: st.applicantCount || 0,
+          schedule: st.schedule,
+          applicationDeadline: st.schedule.registrationEnd,
+          startDate: st.schedule.tournamentStart,
+          location: st.location as import('../types').TournamentLocation,
+          status: (st.status as import('../types').TournamentStatus) || 'OPEN',
+          applicantCount: st.applicantCount || 0,
+          createdAt: st.registeredAt,
+          rules: st.rules || [],
+          txHash: st.txHash,
+          blockHeight: st.blockHeight,
+          onChainVerified: Boolean(st.txHash || st.onChainVerified)
+        };
+        console.log('[PrivateRank][TOURNAMENT]\nDecoded on-chain tournament:', {
+          id: item.id,
+          name: item.name,
+          description: item.description,
+          gameTitle: item.gameTitle,
+          tournamentType: item.tournamentType,
+          teamSize: item.teamSize,
+          maxTeams: item.maxTeams,
+          maxParticipants: item.maxParticipants,
+          requirements: item.requirements,
+          prizePool: item.prizePool,
+          prizeDetails: item.prizeDetails,
+          schedule: item.schedule,
+          location: item.location,
+          status: item.status,
+          applicantCount: item.applicantCount,
+          txHash: item.txHash,
+          blockHeight: item.blockHeight,
+          onChainVerified: item.onChainVerified
+        });
+        return item;
+      });
+
+      setTournaments(mapped);
+      ContractService.setTournaments(mapped);
+      console.log(`[TournamentContext] Loaded ${mapped.length} tournament(s) from backend server`);
+    } catch (serverErr) {
+      console.warn('[TournamentContext] Backend server unavailable:', (serverErr as Error).message);
+      setServerStatus('unreachable');
+      // When backend is unreachable, do NOT invent mock tournaments
+      setTournaments([]);
+    }
+
+    // Purge any legacy localStorage tournament items from older schema versions
+    try {
+      if (typeof localStorage !== 'undefined') {
+        localStorage.removeItem('privaterank_midnight_tournaments_v3');
+        localStorage.removeItem('privaterank_midnight_tournaments_v2');
+        localStorage.removeItem('privaterank_midnight_tournaments');
+      }
+    } catch {
+      // non-fatal
+    }
+
     setApplications(ContractService.getAllApplications());
     setTeams(ContractService.getTeams());
   }, []);
 
   useEffect(() => {
+    // Initial health check to determine server status immediately
+    checkServerHealth().then(h => {
+      if (h.ok) {
+        setServerStatus('ok');
+      } else {
+        console.warn('[TournamentContext] Backend server unreachable:', h.error);
+        setServerStatus('unreachable');
+      }
+    });
+
     refreshData();
+    const interval = setInterval(() => {
+      refreshData();
+    }, 8000);
     const unsubscribe = MidnightTransactionService.subscribeProgress((progress) => {
       setTxProgress(progress);
     });
-    return unsubscribe;
+    return () => {
+      clearInterval(interval);
+      unsubscribe();
+    };
   }, [refreshData]);
 
   const resetTxState = () => {
@@ -165,6 +269,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     maxParticipants?: number;
     requirements: TournamentRequirements;
     prizePool: string;
+    prizeDetails?: string;
     schedule: TournamentSchedule;
     location: TournamentLocation;
     rules?: string[];
@@ -428,6 +533,8 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         error,
         txProgress,
         txReceipt,
+        serverStatus,
+        serverResponse,
         resetTxState,
         refreshData,
         createTournament,

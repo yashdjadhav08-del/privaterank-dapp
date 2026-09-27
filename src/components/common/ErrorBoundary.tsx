@@ -1,5 +1,4 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
-import { AlertCircle, RefreshCw } from 'lucide-react';
 
 interface Props {
   children: ReactNode;
@@ -56,10 +55,11 @@ export class ErrorBoundary extends Component<Props, State> {
                 color: '#f87171',
                 display: 'flex',
                 alignItems: 'center',
-                justifyContent: 'center'
+                justifyContent: 'center',
+                fontSize: '24px'
               }}
             >
-              <AlertCircle size={28} />
+              ⚠
             </div>
 
             <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#f8fafc' }}>
@@ -75,7 +75,7 @@ export class ErrorBoundary extends Component<Props, State> {
               className="btn-primary"
               style={{ padding: '8px 20px', fontSize: '0.85rem', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
             >
-              <RefreshCw size={15} /> Try Again
+              Try Again
             </button>
           </div>
         </div>

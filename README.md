@@ -79,7 +79,7 @@ PrivateRank supports **Midnight Preprod Testnet ONLY**. Other networks (Mainnet,
 | `VITE_PREPROD_RPC_URL` | Midnight Preprod RPC endpoint | `https://rpc.preprod.midnight.network` |
 | `VITE_PREPROD_INDEXER_URL` | Midnight Preprod Indexer GraphQL | `https://indexer.preprod.midnight.network/api/v1/graphql` |
 | `VITE_PREPROD_PROOF_SERVER_URL` | Midnight Proof Server URL | `http://127.0.0.1:6300` |
-| `VITE_PREPROD_CONTRACT_ADDRESS` | Preprod Smart Contract Address | `0200preprod_privaterank_midnight_contract_v1` |
+| `VITE_PREPROD_CONTRACT_ADDRESS` | Preprod Smart Contract Address | `a4f5e2b8ab757f5e4d981415f74fffea3e42c50d7d0fb50e04bf47ac2faf7078` |
 | `PORT` | Local host port mapped to container | `3000` |
 
 ---
@@ -141,7 +141,65 @@ The Midnight Compact contract specifies:
 
 ---
 
-## 7. Verification & Compliance Checklist
+---
+
+## 7. CI/CD Pipeline
+
+PrivateRank employs GitHub Actions for continuous integration and explicit continuous deployment targeting **Midnight Preprod Testnet**.
+
+### Continuous Integration (CI)
+The CI pipeline (`.github/workflows/ci.yml`) triggers automatically on:
+- `push` to `main`, `master`, and `develop`
+- `pull_request` to `main`, `master`, and `develop`
+
+#### Automated Checks
+Every push or PR must pass all stages in order:
+1. **Dependency Installation**: `npm ci` (clean, frozen lockfile)
+2. **TypeScript / Type Check**: `npm run typecheck` (`tsc --noEmit`)
+3. **Lint**: `npm run lint` (`tsc --noEmit`)
+4. **Frontend & Logic Tests**: `npm run test:frontend` (UI, components, state, ZK prover, access control)
+5. **Contract Tests**: `npm run test:contract` (tournament lifecycle, team invariants, schedule rules, 1AM wallet mocking)
+6. **Smart Contract Validation**: `npm run contract:check` (verifies compiled Compact bindings & type declarations)
+7. **Production Build**: `npm run build` (`tsc && vite build`)
+
+If any check fails, the pipeline immediately halts with `✗ CI FAILED`.
+
+### Continuous Deployment (CD)
+The deployment workflow (`.github/workflows/deploy.yml`) is **manually triggered** via `workflow_dispatch` and targets **Midnight Preprod Testnet ONLY**:
+
+```text
+GitHub Actions → Run workflow → Deploy to Midnight Preprod
+   ↓
+Verify Target Network is Preprod
+   ↓
+Run Contract Tests & Type Checks
+   ↓
+Verify Compact ZKIR Circuit Artifacts
+   ↓
+Verify Production Build
+   ↓
+Deploy to Midnight Preprod RPC
+   ↓
+Confirm Deployment Receipt
+```
+
+#### Mainnet Safety Guard
+Automatic or manual deployment to **Midnight Mainnet is strictly disabled**. Any attempt to target `mainnet` triggers an immediate fatal security rejection:
+```text
+❌ FATAL SECURITY ERROR: Target network is set to "mainnet"!
+PrivateRank enforces Midnight Preprod ONLY. Mainnet auto-deployment is disabled.
+```
+
+#### GitHub Secrets Configuration
+Configure these repository secrets in GitHub (`Settings` → `Secrets and variables` → `Actions`):
+- `MIDNIGHT_PREPROD_RPC`: Midnight Preprod RPC URL (e.g. `https://rpc.preprod.midnight.network`)
+- `MIDNIGHT_PREPROD_INDEXER`: Midnight Preprod Indexer GraphQL URL
+- `MIDNIGHT_PREPROD_PROOF_SERVER`: Midnight Proof Server URL (e.g. `http://127.0.0.1:6300`)
+- `DEPLOYER_PRIVATE_KEY` / `DEPLOYER_SEED`: Private key or seed phrase for deployer account on Midnight Preprod (never logged or exposed in CI logs)
+
+---
+
+## 8. Verification & Compliance Checklist
 
 - [x] **Real Wallet Connection**: Powered by 1AM Wallet extension (`window.midnight['1am']`).
 - [x] **Real Wallet Address**: Derived directly from the connected account.
@@ -149,4 +207,6 @@ The Midnight Compact contract specifies:
 - [x] **Midnight Preprod Testnet ONLY**: No exposure of other networks or multi-chain selectors.
 - [x] **Wrong Network Modal & Switching**: Programmatic switch action with real wallet integration.
 - [x] **Dockerized Production Setup**: Multi-stage `Dockerfile` and `docker-compose.yml`.
+- [x] **CI/CD Automation**: GitHub Actions CI (`ci.yml`) and manual Preprod CD (`deploy.yml`).
 - [x] **No Blank Screen**: Protected by React Error Boundaries.
+

@@ -35,3 +35,10 @@ yarn-error.log*
 *.njsproj
 *.sln
 *.sw?
+
+# Scratch & debug scripts
+scratch/
+scratch_*.mjs
+test_*.mjs
+scan_blocks.mjs
+search_recent_contracts.mjs

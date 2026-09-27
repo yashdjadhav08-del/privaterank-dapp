@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { TransactionProgress, TransactionReceipt } from '../../types';
 import { shortenAddress } from '../../utils/crypto';
 import { 
@@ -12,7 +12,8 @@ import {
   FileText, 
   Radio, 
   Layers,
-  ArrowRight
+  ArrowRight,
+  RefreshCw
 } from 'lucide-react';
 
 interface TransactionModalProps {
@@ -20,29 +21,58 @@ interface TransactionModalProps {
   receipt?: TransactionReceipt | null;
   onClose: () => void;
   onRetry?: () => void;
+  onRefresh?: () => Promise<void> | void;
+  onDismissBackground?: () => void;
 }
 
 export const TransactionModal: React.FC<TransactionModalProps> = ({
   progress,
   receipt,
   onClose,
-  onRetry
+  onRetry,
+  onRefresh,
+  onDismissBackground
 }) => {
   const [copied, setCopied] = useState(false);
+  const [refreshCountdown, setRefreshCountdown] = useState(4);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const isConfirmed = progress?.status === 'CONFIRMED';
+  const isRejected = progress?.status === 'REJECTED';
+  const isFailed = progress?.status === 'FAILED';
+  const isPending = !isConfirmed && !isRejected && !isFailed;
+  const isWaitingIndexer = isPending && (progress?.step === 5 || progress?.step === 4 || progress?.message?.toLowerCase().includes('indexer'));
+
+  useEffect(() => {
+    if (!isWaitingIndexer) return;
+
+    const timer = setInterval(() => {
+      setRefreshCountdown(prev => {
+        if (prev <= 1) {
+          if (onRefresh) {
+            setIsRefreshing(true);
+            Promise.resolve(onRefresh()).finally(() => {
+              setTimeout(() => setIsRefreshing(false), 500);
+            });
+          }
+          return 5;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [isWaitingIndexer, onRefresh]);
 
   if (!progress || progress.status === 'IDLE') return null;
 
-  const isConfirmed = progress.status === 'CONFIRMED';
-  const isRejected = progress.status === 'REJECTED';
-  const isFailed = progress.status === 'FAILED';
-  const isPending = !isConfirmed && !isRejected && !isFailed;
-
   const steps = [
-    { num: 1, label: 'Prepare Tx', desc: 'Serialize Midnight contract payload' },
-    { num: 2, label: '1AM Approval', desc: 'Sign in 1AM Wallet extension' },
-    { num: 3, label: 'Broadcast', desc: 'Submit to Midnight Preprod RPC' },
-    { num: 4, label: 'Block Inclusion', desc: 'Validate ZK state commitment' },
-    { num: 5, label: 'Confirmed', desc: 'Recorded on Midnight ledger' }
+    { num: 1, label: 'Prepare Tx', desc: 'Verify contract & construct call intent' },
+    { num: 2, label: '1AM Approval', desc: 'Balance & sign in 1AM Wallet' },
+    { num: 3, label: 'Broadcast', desc: 'Submit transaction to Midnight Preprod' },
+    { num: 4, label: 'Block Inclusion', desc: 'Await Midnight block consensus' },
+    { num: 5, label: 'Indexer Verify', desc: 'Verify on-chain state on indexer' },
+    { num: 6, label: 'Confirmed', desc: 'Recorded & proven on Midnight ledger' }
   ];
 
   const handleCopyTx = () => {
@@ -55,6 +85,24 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
   };
 
   const getTitle = () => {
+    if (progress.type === 'DEPLOY_CONTRACT') {
+      if (isConfirmed) return 'PrivateRank Contract Deployed!';
+      if (isRejected) return 'Deployment Cancelled';
+      if (isFailed) return 'Deployment Failed';
+      return 'Deploying PrivateRank Contract';
+    }
+    if (progress.type === 'CREATE_TOURNAMENT') {
+      if (isConfirmed) return 'Tournament Created Successfully!';
+      if (isRejected) return 'Tournament Creation Cancelled';
+      if (isFailed) return 'Tournament Creation Failed';
+      return 'Creating Tournament';
+    }
+    if (progress.type === 'SUBMIT_APPLICATION') {
+      if (isConfirmed) return 'Tournament Joined Successfully!';
+      if (isRejected) return 'Join Cancelled';
+      if (isFailed) return 'Join Failed';
+      return 'Joining Solo Tournament';
+    }
     const typeLabel = progress.type.replace(/_/g, ' ');
     if (isConfirmed) return `${typeLabel} Confirmed!`;
     if (isRejected) return 'Transaction Cancelled';
@@ -122,9 +170,9 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           </div>
         </div>
 
-        {/* 5-Step Lifecycle Progress Tracker */}
+        {/* 6-Step Lifecycle Progress Tracker */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '6px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '6px' }}>
             {steps.map(s => {
               const isCurrent = progress.step === s.num && isPending;
               const isDone = progress.step > s.num || (progress.step === s.num && isConfirmed);
@@ -266,29 +314,104 @@ export const TransactionModal: React.FC<TransactionModalProps> = ({
           </div>
         )}
 
-        {/* Actions */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
-          {(isRejected || isFailed) && onRetry && (
-            <button
-              onClick={onRetry}
-              className="btn-primary"
-              style={{ padding: '8px 18px', fontSize: '0.85rem' }}
-            >
-              Retry Transaction
-            </button>
-          )}
+        {/* Auto-Refresh / Indexer Polling Status Bar */}
+        {isWaitingIndexer && (
+          <div
+            style={{
+              padding: '10px 14px',
+              borderRadius: '8px',
+              background: 'rgba(0, 242, 254, 0.08)',
+              border: '1px solid rgba(0, 242, 254, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '10px'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', color: '#94a3b8' }}>
+              <RefreshCw size={14} className={`text-cyan-400 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>
+                Auto-refreshing Preprod indexer in <strong style={{ color: '#00f2fe' }}>{refreshCountdown}s</strong>
+              </span>
+            </div>
+            {onRefresh && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsRefreshing(true);
+                  setRefreshCountdown(5);
+                  Promise.resolve(onRefresh()).finally(() => {
+                    setTimeout(() => setIsRefreshing(false), 500);
+                  });
+                }}
+                disabled={isRefreshing}
+                style={{
+                  background: 'rgba(0, 242, 254, 0.15)',
+                  border: '1px solid rgba(0, 242, 254, 0.4)',
+                  color: '#00f2fe',
+                  borderRadius: '6px',
+                  padding: '4px 10px',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  cursor: isRefreshing ? 'wait' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <RefreshCw size={12} className={isRefreshing ? 'animate-spin' : ''} />
+                {isRefreshing ? 'Syncing...' : 'Sync Now'}
+              </button>
+            )}
+          </div>
+        )}
 
-          {(isConfirmed || isRejected || isFailed) && (
+        {/* Actions */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '10px' }}>
+          {isWaitingIndexer ? (
             <button
-              onClick={onClose}
-              className="btn-secondary"
-              style={{ padding: '8px 20px', fontSize: '0.85rem' }}
+              onClick={() => {
+                if (onDismissBackground) onDismissBackground();
+                onClose();
+              }}
+              type="button"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#64748b',
+                fontSize: '0.75rem',
+                cursor: 'pointer',
+                textDecoration: 'underline'
+              }}
             >
-              Close
+              Continue in background
             </button>
-          )}
+          ) : <div />}
+
+          <div style={{ display: 'flex', gap: '10px' }}>
+            {(isRejected || isFailed) && onRetry && (
+              <button
+                onClick={onRetry}
+                className="btn-primary"
+                style={{ padding: '8px 18px', fontSize: '0.85rem' }}
+              >
+                Retry Transaction
+              </button>
+            )}
+
+            {(isConfirmed || isRejected || isFailed) && (
+              <button
+                onClick={onClose}
+                className="btn-secondary"
+                style={{ padding: '8px 20px', fontSize: '0.85rem' }}
+              >
+                Close
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
   );
 };
+

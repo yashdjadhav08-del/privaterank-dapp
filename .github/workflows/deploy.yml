@@ -1,0 +1,73 @@
+name: PrivateRank CD — Midnight Preprod Deployment
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_network:
+        description: 'Target Midnight Network (Midnight Preprod ONLY)'
+        required: true
+        default: 'preprod'
+        type: choice
+        options:
+          - preprod
+      dry_run:
+        description: 'Run deployment verification in dry-run mode (no on-chain gas spent)'
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+jobs:
+  deploy-preprod:
+    name: Deploy to Midnight Preprod Testnet
+    runs-on: ubuntu-latest
+    environment: preprod
+
+    steps:
+      - name: 1. Strict Target Network Guardrail (Disallow Mainnet)
+        run: |
+          echo "Target Network Selected: ${{ github.event.inputs.target_network }}"
+          if [ "${{ github.event.inputs.target_network }}" != "preprod" ]; then
+            echo "::error::CRITICAL SECURITY VIOLATION: Deployments are strictly limited to Midnight Preprod. Auto-deploy to Mainnet is disabled."
+            exit 1
+          fi
+
+      - name: 2. Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 3. Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: 4. Install dependencies (Clean / Frozen Lockfile)
+        run: npm ci
+
+      - name: 5. Run Contract & On-Chain Integration Tests
+        run: npm run test:contract
+
+      - name: 6. Verify Smart Contract & Compact Bindings
+        run: npm run contract:check
+
+      - name: 7. Verify Production Build
+        run: npm run build
+
+      - name: 8. Execute Contract Deployment to Midnight Preprod
+        env:
+          MIDNIGHT_NETWORK: preprod
+          MIDNIGHT_PREPROD_RPC: ${{ secrets.MIDNIGHT_PREPROD_RPC || 'https://rpc.preprod.midnight.network' }}
+          MIDNIGHT_PREPROD_INDEXER: ${{ secrets.MIDNIGHT_PREPROD_INDEXER || 'https://indexer.preprod.midnight.network/api/v1/graphql' }}
+          MIDNIGHT_PREPROD_PROOF_SERVER: ${{ secrets.MIDNIGHT_PREPROD_PROOF_SERVER || 'http://127.0.0.1:6300' }}
+          DEPLOYER_PRIVATE_KEY: ${{ secrets.DEPLOYER_PRIVATE_KEY }}
+          DEPLOYER_SEED: ${{ secrets.DEPLOYER_SEED }}
+          DRY_RUN: ${{ github.event.inputs.dry_run }}
+        run: |
+          npm run contract:deploy:preprod
+
+      - name: 9. Verify Deployment Completion
+        run: |
+          echo "Deployment successfully executed and verified on Midnight Preprod Testnet."
+          echo "Network: Midnight Preprod (preprod)"

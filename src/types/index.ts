@@ -116,6 +116,7 @@ export interface Tournament {
   currentTeams: number;
   requirements: TournamentRequirements;
   prizePool: string;
+  prizeDetails?: string;
   maxParticipants: number;
   currentParticipants: number;
   schedule: TournamentSchedule;
@@ -126,6 +127,9 @@ export interface Tournament {
   applicantCount: number;
   createdAt: string;
   rules?: string[];
+  txHash?: string;
+  blockHeight?: number;
+  onChainVerified?: boolean;
 }
 
 export interface ZKProofPayload {
@@ -211,12 +215,15 @@ export type TransactionStatus =
   | 'PREPARING'
   | 'AWAITING_WALLET_APPROVAL'
   | 'SUBMITTING'
+  | 'BLOCK_INCLUSION'
+  | 'INDEXER_VERIFICATION'
   | 'CONFIRMING'
   | 'CONFIRMED'
   | 'REJECTED'
   | 'FAILED';
 
 export type TransactionType =
+  | 'DEPLOY_CONTRACT'
   | 'CREATE_TOURNAMENT'
   | 'PUBLISH_TOURNAMENT'
   | 'CLOSE_TOURNAMENT'

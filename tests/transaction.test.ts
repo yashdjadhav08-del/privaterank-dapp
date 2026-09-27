@@ -5,6 +5,7 @@ import { AuthService } from '../src/wallet/authService';
 import { OneAmConnector } from '../src/wallet/oneAmConnector';
 import { RankTier, TournamentLocation, TournamentSchedule } from '../src/types';
 import { ZkProverService } from '../src/contracts/zkProver';
+import { __setMockDeploymentStatus } from '../src/config/network';
 
 describe('MidnightTransactionService — 1AM Wallet & Midnight Preprod On-Chain Lifecycle', () => {
   const organizerAddress = 'addr_test1midnight_organizer_alpha';
@@ -25,8 +26,15 @@ describe('MidnightTransactionService — 1AM Wallet & Midnight Preprod On-Chain 
   };
 
   beforeEach(() => {
+    vi.restoreAllMocks();
     localStorage.clear();
-    AuthService.registerOrganizer(organizerAddress, 'Alpha Org', 'Midnight Esports');
+    __setMockDeploymentStatus({
+      isDeployed: true,
+      // Synthetic PrivateRank contract address — not the a4f5e2b8 exploit-bounty contract
+      contractAddress: '1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b1c2d3e4f5a6b7c8d9e0f1a2b',
+      state: '{}'
+    });
+    AuthService.selectRole("ORGANIZER");
     MidnightTransactionService.resetProgress();
 
     const mockApi = {
@@ -118,6 +126,7 @@ describe('MidnightTransactionService — 1AM Wallet & Midnight Preprod On-Chain 
     });
 
     // 1. Player 1 creates team
+    AuthService.selectRole('PLAYER');
     const createTeamRes = await MidnightTransactionService.createTeam({
       tournamentId: tourney.id,
       captainWalletAddress: player1Address,
@@ -257,6 +266,7 @@ describe('MidnightTransactionService — 1AM Wallet & Midnight Preprod On-Chain 
       location: defaultLocation
     });
 
+    AuthService.selectRole('PLAYER');
     const proof = await ZkProverService.generateEligibilityProof({
       tournamentId: tourney.id,
       requirements: tourney.requirements,
@@ -349,4 +359,55 @@ describe('MidnightTransactionService — 1AM Wallet & Midnight Preprod On-Chain 
     expect(stepsObserved).toContain('CONFIRMING');
     expect(stepsObserved).toContain('CONFIRMED');
   });
+
+  it('should reject tournament creation honestly when contract is not deployed to Midnight Preprod', async () => {
+    __setMockDeploymentStatus({ isDeployed: false, contractAddress: '', state: null });
+
+    const stepsObserved: string[] = [];
+    const unsubscribe = MidnightTransactionService.subscribeProgress(p => {
+      stepsObserved.push(p.status);
+    });
+
+    await expect(
+      MidnightTransactionService.createTournament({
+        name: 'Un-deployed Test Tournament',
+        description: 'Should fail honestly',
+        gameTitle: 'BGMI',
+        organizerAddress,
+        organizerName: 'Alpha Org',
+        tournamentType: 'SOLO',
+        requirements: {
+          minimumRank: RankTier.PLATINUM,
+          minimumScore: 1500,
+          minimumWins: 10
+        },
+        prizePool: '10,000 DUST',
+        schedule: defaultSchedule,
+        location: defaultLocation
+      })
+    ).rejects.toThrow('Tournament contract is not deployed to Midnight Preprod yet.');
+
+    unsubscribe();
+    expect(stepsObserved).toContain('FAILED');
+  });
+
+  it('should maintain user-selected role correctly (ORGANIZER and PLAYER)', () => {
+    // 1. Select Organizer role
+    AuthService.selectRole('ORGANIZER');
+    expect(AuthService.getActiveRole()).toBe('ORGANIZER');
+    expect(AuthService.isOrganizer()).toBe(true);
+    expect(AuthService.isPlayer()).toBe(false);
+
+    // 2. Switch to Player role
+    AuthService.selectRole('PLAYER');
+    expect(AuthService.getActiveRole()).toBe('PLAYER');
+    expect(AuthService.isPlayer()).toBe(true);
+    expect(AuthService.isOrganizer()).toBe(false);
+
+    // 3. Clear role on disconnect
+    AuthService.clearRole();
+    expect(AuthService.getSelectedRole()).toBeNull();
+  });
 });
+
+

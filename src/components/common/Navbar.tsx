@@ -10,7 +10,7 @@ interface NavbarProps {
 }
 
 export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
-  const { authState, activeRole, isOrganizerAuthorized, connectWallet, disconnectWallet } = useWallet();
+  const { authState, activeRole, connectWallet, disconnectWallet } = useWallet();
   const [showWalletMenu, setShowWalletMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
 
@@ -98,7 +98,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
             </button>
 
             {/* Players see Explore, Organizers focus on Managed Tournaments */}
-            {!isOrganizerAuthorized && (
+            {activeRole !== 'ORGANIZER' && (
               <button
                 onClick={() => onNavigate('explore')}
                 style={{
@@ -123,19 +123,19 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                 padding: '6px 16px',
                 borderRadius: '8px',
                 border: 'none',
-                background: currentView === 'dashboard' ? (isOrganizerAuthorized ? 'rgba(168, 85, 247, 0.2)' : 'rgba(0, 242, 254, 0.15)') : 'transparent',
-                color: currentView === 'dashboard' ? (isOrganizerAuthorized ? '#c084fc' : '#00f2fe') : '#94a3b8',
+                background: currentView === 'dashboard' ? (activeRole === 'ORGANIZER' ? 'rgba(168, 85, 247, 0.2)' : 'rgba(0, 242, 254, 0.15)') : 'transparent',
+                color: currentView === 'dashboard' ? (activeRole === 'ORGANIZER' ? '#c084fc' : '#00f2fe') : '#94a3b8',
                 fontWeight: 600,
                 fontSize: '0.9rem',
                 cursor: 'pointer',
                 transition: 'all 0.15s ease'
               }}
             >
-              {isOrganizerAuthorized ? 'Organizer Dashboard' : 'Dashboard'}
+              {activeRole === 'ORGANIZER' ? 'Organizer Dashboard' : 'Dashboard'}
             </button>
 
             {/* Profile is ONLY available for Players */}
-            {authState.isConnected && !isOrganizerAuthorized && (
+            {authState.isConnected && activeRole !== 'ORGANIZER' && (
               <button
                 onClick={() => onNavigate('profile')}
                 style={{
@@ -168,13 +168,13 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '6px',
-                  background: isOrganizerAuthorized ? 'rgba(168, 85, 247, 0.15)' : 'rgba(0, 242, 254, 0.15)',
-                  border: isOrganizerAuthorized ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid rgba(0, 242, 254, 0.3)',
-                  color: isOrganizerAuthorized ? '#c084fc' : '#00f2fe'
+                  background: activeRole === 'ORGANIZER' ? 'rgba(168, 85, 247, 0.15)' : 'rgba(0, 242, 254, 0.15)',
+                  border: activeRole === 'ORGANIZER' ? '1px solid rgba(168, 85, 247, 0.4)' : '1px solid rgba(0, 242, 254, 0.3)',
+                  color: activeRole === 'ORGANIZER' ? '#c084fc' : '#00f2fe'
                 }}
               >
-                {isOrganizerAuthorized ? <Shield size={14} /> : <Gamepad2 size={14} />}
-                <span>{isOrganizerAuthorized ? 'Organizer Portal' : 'Player Portal'}</span>
+                {activeRole === 'ORGANIZER' ? <Shield size={14} /> : <Gamepad2 size={14} />}
+                <span>{activeRole === 'ORGANIZER' ? 'Organizer Portal' : 'Player Portal'}</span>
               </div>
             )}
 
@@ -220,10 +220,10 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                     </div>
 
                     <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '8px' }}>
-                      Identity: <strong style={{ color: isOrganizerAuthorized ? '#c084fc' : '#00f2fe' }}>{isOrganizerAuthorized ? 'Authorized Organizer' : 'Verified Player'}</strong>
+                      Identity: <strong style={{ color: activeRole === 'ORGANIZER' ? '#c084fc' : '#00f2fe' }}>{activeRole === 'ORGANIZER' ? 'Authorized Organizer' : 'Verified Player'}</strong>
                     </div>
 
-                    {!isOrganizerAuthorized && (
+                    {activeRole !== 'ORGANIZER' && (
                       <button
                         onClick={() => {
                           onNavigate('profile');
@@ -331,7 +331,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
             >
               Home
             </button>
-            {!isOrganizerAuthorized && (
+            {activeRole !== 'ORGANIZER' && (
               <button
                 onClick={() => {
                   onNavigate('explore');
@@ -353,7 +353,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
             >
               Dashboard
             </button>
-            {authState.isConnected && !isOrganizerAuthorized && (
+            {authState.isConnected && activeRole !== 'ORGANIZER' && (
               <button
                 onClick={() => {
                   onNavigate('profile');
@@ -380,7 +380,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
                   className="btn-danger"
                   style={{ width: '100%', fontSize: '0.8rem', padding: '8px 12px' }}
                 >
-                  Disconnect ({isOrganizerAuthorized ? 'Organizer' : 'Player'})
+                  Disconnect ({activeRole === 'ORGANIZER' ? 'Organizer' : 'Player'})
                 </button>
               ) : (
                 <button
@@ -422,3 +422,4 @@ export const Navbar: React.FC<NavbarProps> = ({ currentView, onNavigate }) => {
     </>
   );
 };
+

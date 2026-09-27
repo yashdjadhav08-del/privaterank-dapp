@@ -8,13 +8,14 @@ import { ProfilePage } from './pages/ProfilePage';
 import { ErrorBoundary } from './components/common/ErrorBoundary';
 import { WrongNetworkAlert } from './components/common/WrongNetworkAlert';
 import { AccessDeniedModal } from './components/common/AccessDeniedModal';
+import { RoleSelectionModal } from './components/common/RoleSelectionModal';
 import { useWallet } from './context/WalletContext';
 import { AlertCircle, RefreshCw } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [currentView, setCurrentView] = useState<string>('home');
-  const [selectedTournamentId, setSelectedTournamentId] = useState<string>('t-midnight-champ-2026');
-  const { authState, isOrganizerAuthorized, signMessage, clearError } = useWallet();
+  const [selectedTournamentId, setSelectedTournamentId] = useState<string>('');
+  const { authState, activeRole, signMessage, clearError } = useWallet();
 
 
   const handleNavigate = (view: string, extra?: { tournamentId?: string }) => {
@@ -37,7 +38,7 @@ export const App: React.FC = () => {
         return <DashboardPage onNavigate={handleNavigate} />;
 
       case 'profile':
-        if (authState.isConnected && isOrganizerAuthorized) {
+        if (authState.isConnected && activeRole === 'ORGANIZER') {
           return (
             <div style={{ maxWidth: '800px', margin: '60px auto', padding: '20px', textAlign: 'center' }}>
               <div className="glass-panel" style={{ padding: '40px' }}>
@@ -75,6 +76,9 @@ export const App: React.FC = () => {
 
         {/* Global Access Denied Popup Modal across all pages */}
         <AccessDeniedModal />
+
+        {/* First-time Role Selection Modal for unbound wallets */}
+        <RoleSelectionModal />
 
         {/* Optional Signature Pending Banner / Retry if connected but sign was cancelled */}
         {authState.isConnected && !authState.signature && authState.error && !authState.isWrongNetwork && (

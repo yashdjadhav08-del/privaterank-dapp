@@ -7,14 +7,15 @@ describe('Midnight Preprod Testnet Network Requirement & Validation', () => {
   beforeEach(() => {
     localStorage.clear();
     vi.restoreAllMocks();
+    OneAmConnector.setConnectedApi(null);
   });
 
   it('should strictly define NETWORK as preprod and have complete Preprod config', () => {
     expect(NETWORK).toBe('preprod');
     expect(NETWORK_NAME).toBe('Midnight Preprod Testnet');
     expect(PREPROD_CONFIG.networkId).toBe('preprod');
-    expect(PREPROD_CONFIG.contractAddress).toBeDefined();
-    expect(PREPROD_CONFIG.contractAddress.length).toBeGreaterThan(0);
+    // Initially null/empty before first deployment
+    expect(PREPROD_CONFIG.contractAddress).toBe('');
     expect(PREPROD_CONFIG.rpcUrl).toContain('preprod');
   });
 
@@ -38,10 +39,14 @@ describe('Midnight Preprod Testnet Network Requirement & Validation', () => {
     expect(isPreprodNetwork(undefined)).toBe(false);
   });
 
-  it('getPreprodConfig should return configuration or throw an explicit configuration error', () => {
+  it('getPreprodConfig should return complete Preprod network configuration when address is set', () => {
+    const canonicalAddr = '0200' + '1234567890abcdef'.repeat(3) + '1234567890ab';
+    PREPROD_CONFIG.contractAddress = canonicalAddr;
     const config = getPreprodConfig();
     expect(config.networkId).toBe('preprod');
-    expect(config.name).toBe('Midnight Preprod Testnet');
+    expect(config.contractAddress).toBe(canonicalAddr);
+    expect(config.rpcUrl).toContain('preprod.midnight.network');
+    expect(config.indexerUrl).toContain('indexer.preprod.midnight.network');
   });
 
   it('OneAmConnector should connect with preprod and detect when wallet is on preprod', async () => {
@@ -50,7 +55,8 @@ describe('Midnight Preprod Testnet Network Requirement & Validation', () => {
       getUnshieldedAddress: async () => '0x71C8366420A092679b54538490758BDE353613AC',
       getDustBalance: async () => 1000000n,
       getNetwork: async () => 'preprod',
-      signData: vi.fn()
+      signData: vi.fn(),
+      submitTransaction: vi.fn().mockResolvedValue(undefined)
     };
 
     const mockProvider: OneAmWalletProvider = {
@@ -77,7 +83,8 @@ describe('Midnight Preprod Testnet Network Requirement & Validation', () => {
       getShieldedAddresses: async () => [],
       getUnshieldedAddress: async () => '0x71C8366420A092679b54538490758BDE353613AC',
       getNetwork: async () => 'mainnet',
-      signData: vi.fn()
+      signData: vi.fn(),
+      submitTransaction: vi.fn().mockResolvedValue(undefined)
     };
 
     const mockProvider: OneAmWalletProvider = {

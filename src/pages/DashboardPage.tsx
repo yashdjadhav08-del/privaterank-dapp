@@ -1,11 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWallet } from '../context/WalletContext';
 import { useTournament } from '../context/TournamentContext';
+import { verifyContractDeployedOnPreprod, PREPROD_CONFIG } from '../config/network';
+import { ContractDeploymentService } from '../services/contractDeploymentService';
+import { MidnightTransactionService } from '../contracts/midnightTransactionService';
 import { RankBadge } from '../components/common/RankBadge';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { Modal } from '../components/common/Modal';
 import { AccessDenied } from '../components/common/AccessDenied';
-import { shortenAddress, safeAddressCompare } from '../utils/crypto';
+import { shortenAddress, safeAddressCompare, formatPrizePool } from '../utils/crypto';
 import { 
   GameCategory,
   LocationType, 
@@ -27,12 +30,12 @@ import {
   User,
   Calendar,
   MapPin,
-  Globe,
   Shield,
-  Clock,
   Sparkles,
   AlertCircle,
-  Trash2
+  Trash2,
+  Loader2,
+  RefreshCw
 } from 'lucide-react';
 
 interface DashboardPageProps {
@@ -40,7 +43,12 @@ interface DashboardPageProps {
 }
 
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
-  const { authState, activeRole, isOrganizerAuthorized, playerProfile, connectWallet, registerOrganizerWallet } = useWallet();
+  const { 
+    authState, 
+    activeRole, 
+    playerProfile, 
+    connectWallet
+  } = useWallet();
   const { 
     tournaments, 
     applications, 
@@ -50,13 +58,69 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
     reviewApplication,
     txProgress,
     txReceipt,
-    resetTxState 
+    resetTxState,
+    refreshData 
   } = useTournament();
 
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isModalDismissed, setIsModalDismissed] = useState(false);
+
+  useEffect(() => {
+    if (txProgress?.status === 'CONFIRMED' || txProgress?.status === 'FAILED' || txProgress?.status === 'REJECTED') {
+      setIsModalDismissed(false);
+    }
+  }, [txProgress?.status]);
+
   const [tournamentToDelete, setTournamentToDelete] = useState<Tournament | null>(null);
   const [deleteNotice, setDeleteNotice] = useState<string | null>(null);
+  const [deploySuccessNotice, setDeploySuccessNotice] = useState<{ address: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Preprod Contract Status — internal check only, not displayed to organizers
+  const [isContractDeployed, setIsContractDeployed] = useState<boolean>(false);
+  const [isContractChecking, setIsContractChecking] = useState<boolean>(true);
+  const [contractVerifyReason, setContractVerifyReason] = useState<string | null>(null);
+
+  const handleManualSync = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await verifyContractDeployedOnPreprod(undefined, { skipCache: true });
+      setIsContractDeployed(res.isDeployed);
+      setContractVerifyReason(res.reason || res.error || null);
+      await refreshData();
+    } catch (e) {
+      console.warn('[Dashboard] Manual sync error:', e);
+    } finally {
+      setTimeout(() => setIsSyncing(false), 500);
+    }
+  };
+
+  // Internal-only contract status check — never exposed in the organizer UI
+  useEffect(() => {
+    let isMounted = true;
+    setIsContractChecking(true);
+    console.log('[PrivateRank] canonical contract address:', PREPROD_CONFIG.contractAddress);
+    console.log('[PrivateRank] starting Preprod contract verification');
+    verifyContractDeployedOnPreprod(undefined, { skipCache: true }).then(res => {
+      console.log('[PrivateRank] verification result:', res);
+      console.log('[PrivateRank] isContractDeployed:', res.isDeployed);
+      console.log('[PrivateRank] contract verification reason:', res.reason || res.error || 'OK');
+      if (isMounted) {
+        setIsContractDeployed(res.isDeployed);
+        setContractVerifyReason(res.reason || res.error || null);
+        setIsContractChecking(false);
+      }
+    }).catch(err => {
+      console.error('[PrivateRank] contract verification exception:', err);
+      if (isMounted) {
+        setIsContractDeployed(false);
+        setContractVerifyReason(err instanceof Error ? err.message : String(err));
+        setIsContractChecking(false);
+      }
+    });
+    return () => { isMounted = false; };
+  }, []);
 
   // Form State
   const [newTourneyName, setNewTourneyName] = useState('');
@@ -74,7 +138,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
   const [newMinRank, setNewMinRank] = useState<RankTier>(RankTier.PLATINUM);
   const [newMinScore, setNewMinScore] = useState<number>(2000);
   const [newMinWins, setNewMinWins] = useState<number>(10);
-  const [newPrize, setNewPrize] = useState('5,000 DUST');
+  const [prizeAmount, setPrizeAmount] = useState('');
+  const [prizeCurrency, setPrizeCurrency] = useState('INR');
+  const [prizeDescription, setPrizeDescription] = useState('');
 
   // Schedule State (Default to current time + offset)
   const defaultRegStart = new Date(Date.now() + 3600000).toISOString().slice(0, 16);
@@ -126,7 +192,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
   ]);
 
   const myJoinedTournaments = safeTournaments.filter(t => t && joinedTournamentIds.has(t.id));
-  const availableTournaments = safeTournaments.filter(t => t && !joinedTournamentIds.has(t.id) && t.status !== 'CLOSED');
+  const availableTournaments = safeTournaments.filter(t => t && !joinedTournamentIds.has(t.id) && t.status !== 'CLOSED' && t.status !== 'ARCHIVED');
 
   // Organizer tournaments
   const myCreatedTournaments = isConnected
@@ -136,6 +202,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
   const handleCreateTournament = async (e: React.FormEvent) => {
     e.preventDefault();
     setFormError(null);
+    setIsModalDismissed(false);
 
     if (!newTourneyName.trim() || !authState.unshieldedAddress) {
       setFormError('Please provide a tournament name.');
@@ -180,10 +247,58 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
       postalCode: locationType === 'OFFLINE' || locationType === 'HYBRID' ? postalCode : undefined
     };
 
+    // Step 1: Check whether a REAL PrivateRank contract exists on Midnight Preprod
+    console.log('[PrivateRank] verifying Midnight Preprod contract status before tournament creation');
+    const deployment = await verifyContractDeployedOnPreprod();
+    
+    if (!deployment.isDeployed) {
+      try {
+        const deployRes = await ContractDeploymentService.deployContractVia1Am((progress) => {
+          let stepNum = 1;
+          if (progress.step === 'PREPARING_TRANSACTION' || progress.step === 'CHECKING_WALLET' || progress.step === 'CHECKING_DUST') stepNum = 1;
+          else if (progress.step === 'AWAITING_APPROVAL') stepNum = 2;
+          else if (progress.step === 'BROADCASTING' || progress.step === 'SUBMITTED') stepNum = 3;
+          else if (progress.step === 'WAITING_INDEXER') stepNum = 5;
+          else if (progress.step === 'CONFIRMED') stepNum = 6;
+
+          MidnightTransactionService.notifyExternalProgress({
+            status: progress.step === 'FAILED' ? 'FAILED' : progress.step === 'CONFIRMED' ? 'CONFIRMED' : 'PREPARING',
+            type: 'DEPLOY_CONTRACT',
+            step: stepNum,
+            totalSteps: 6,
+            message: progress.message,
+            error: progress.error,
+            txHash: progress.txHash
+          });
+        });
+
+        const verifyRes = await verifyContractDeployedOnPreprod(deployRes.contractAddress);
+        if (verifyRes.isDeployed) {
+          setIsContractDeployed(true);
+          setShowCreateModal(false);
+          setDeploySuccessNotice({ address: deployRes.contractAddress });
+          setTimeout(() => {
+            resetTxState();
+          }, 2500);
+          return;
+        } else {
+          throw new Error('Contract deployment was broadcast, but not yet verified by Midnight Preprod indexer.');
+        }
+      } catch (deployErr: unknown) {
+        const msg = deployErr instanceof Error ? deployErr.message : String(deployErr);
+        setFormError(msg);
+        return;
+      }
+    }
+
+    // Step 2: If verified contract exists, proceed with tournament creation
+    setIsContractDeployed(true);
+    console.log('[PrivateRank] executing createTournament on verified Midnight Preprod contract');
+
     try {
       await createTournament({
         name: newTourneyName.trim(),
-        description: newTourneyDesc.trim() || `Official competitive ${newGameTitle} ${newTourneyType} tournament on Midnight Preprod.`,
+        description: newTourneyDesc.trim(),
         gameTitle: newGameTitle.trim(),
         category: newCategory,
         organizerAddress: authState.unshieldedAddress,
@@ -197,7 +312,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           minimumScore: Number(newMinScore),
           minimumWins: Number(newMinWins)
         },
-        prizePool: newPrize,
+        prizePool: prizeAmount.trim() ? (prizeAmount.trim().startsWith('₹') ? prizeAmount.trim() : `₹${prizeAmount.trim()}`) : '₹0',
+        prizeDetails: prizeDescription.trim() || undefined,
         schedule,
         location
       });
@@ -238,6 +354,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
     }
   };
 
+
   if (!isConnected) {
     return (
       <div style={{ maxWidth: '800px', margin: '60px auto', padding: '20px', textAlign: 'center' }}>
@@ -271,18 +388,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
     );
   }
 
-  // Strict Authorization Guard
-  if (activeRole === 'ORGANIZER' && !isOrganizerAuthorized) {
-    return (
-      <AccessDenied
-        connectedAddress={authState.unshieldedAddress}
-        onBackToUserPortal={() => onNavigate('explore')}
-      />
-    );
-  }
 
   return (
-    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '30px 20px', display: 'flex', flexDirection: 'column', gap: '32px' }}>
+    <div style={{ maxWidth: '1240px', margin: '0 auto', padding: '24px 20px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
       {/* Delete Notice Banner */}
       {deleteNotice && (
         <div
@@ -303,11 +411,40 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
         </div>
       )}
 
+      {/* Contract Deploy Success Notice Banner */}
+      {deploySuccessNotice && (
+        <div
+          style={{
+            padding: '16px 20px',
+            borderRadius: '12px',
+            background: 'rgba(16, 185, 129, 0.12)',
+            border: '1px solid rgba(16, 185, 129, 0.5)',
+            display: 'flex',
+            alignItems: 'flex-start',
+            gap: '14px',
+            color: '#10b981'
+          }}
+        >
+          <CheckCircle2 size={22} style={{ flexShrink: 0, marginTop: '2px' }} />
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+            <div style={{ fontWeight: 700, fontSize: '1rem', color: '#6ee7b7' }}>
+              PrivateRank contract deployed successfully.
+            </div>
+            <div style={{ fontSize: '0.82rem', color: '#94a3b8', wordBreak: 'break-all' }}>
+              Contract address: <span style={{ fontFamily: 'monospace', color: '#f1f5f9', fontWeight: 600 }}>{deploySuccessNotice.address}</span>
+            </div>
+            <div style={{ fontSize: '0.9rem', color: '#38bdf8', fontWeight: 600, marginTop: '2px' }}>
+              Please click Create Tournament again to create your tournament.
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top Header Card */}
       <div
         className="glass-panel"
         style={{
-          padding: '24px',
+          padding: '20px 24px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
@@ -318,7 +455,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
       >
         <div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '4px' }}>
-            <h1 style={{ fontSize: '1.75rem', fontWeight: 800, color: '#f8fafc' }}>
+            <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: '#f8fafc', margin: 0 }}>
               {activeRole === 'ORGANIZER' ? 'Organizer Dashboard' : 'Player Dashboard'}
             </h1>
             <span
@@ -340,12 +477,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           </div>
         </div>
 
-        <div style={{ display: 'flex', gap: '10px' }}>
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
           {activeRole === 'ORGANIZER' ? (
             <button
               onClick={() => setShowCreateModal(true)}
               className="btn-purple"
-              style={{ padding: '8px 20px', fontSize: '0.85rem' }}
+              style={{
+                padding: '9px 22px',
+                fontSize: '0.85rem',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontWeight: 700
+              }}
             >
               <PlusCircle size={16} /> Create Tournament
             </button>
@@ -466,7 +611,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                           </div>
                         )}
                         <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
-                          Starts: {tourney.startDate ? new Date(tourney.startDate).toLocaleDateString() : 'TBD'} • Prize: <strong style={{ color: '#fbbf24' }}>{tourney.prizePool || 'TBD'}</strong>
+                          Starts: {tourney.startDate ? new Date(tourney.startDate).toLocaleDateString() : 'TBD'} • Prize: <strong style={{ color: '#fbbf24' }}>{formatPrizePool(tourney.prizePool)}</strong>
                         </div>
                       </div>
 
@@ -499,7 +644,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
 
             {availableTournaments.length === 0 ? (
               <div className="glass-panel" style={{ padding: '36px', textAlign: 'center', color: '#94a3b8' }}>
-                No available tournaments at the moment.
+                <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc', marginBottom: '4px' }}>No Active Tournaments Available Yet</div>
+                <div style={{ fontSize: '0.85rem' }}>No tournaments are currently active on Midnight Preprod.</div>
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '16px' }}>
@@ -568,27 +714,177 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
         </>
       )}
 
-      {/* ORGANIZER DASHBOARD VIEW */}
+      {/* ORGANIZER DASHBOARD VIEW: Responsive 2-Column Side-by-Side Layout */}
       {activeRole === 'ORGANIZER' && (
-        <>
-          <section style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(460px, 1fr))', gap: '24px', alignItems: 'start' }}>
+          
+          {/* LEFT COLUMN: Operations Hub & Participant Applications */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+            
+            {/* 1. Quick Action & Stats Hub */}
+            <section className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+                <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Trophy size={18} className="text-purple-400" />
+                  Tournament Operations
+                </h2>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button
+                    onClick={handleManualSync}
+                    disabled={isSyncing}
+                    className="btn-secondary"
+                    title="Sync on-chain state directly from Midnight Preprod Indexer"
+                    style={{ padding: '7px 12px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+                  >
+                    <RefreshCw size={14} className={`text-cyan-400 ${isSyncing ? 'animate-spin' : ''}`} />
+                    {isSyncing ? 'Syncing...' : 'Sync Preprod'}
+                  </button>
+                  <button
+                    onClick={() => setShowCreateModal(true)}
+                    className="btn-purple"
+                    style={{ padding: '7px 18px', fontSize: '0.85rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+                  >
+                    <PlusCircle size={15} /> + Create Tournament
+                  </button>
+                </div>
+              </div>
+
+              {/* Metrics Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>MANAGED</div>
+                  <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#c084fc', marginTop: '2px' }}>
+                    {myCreatedTournaments.length}
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>PENDING APPS</div>
+                  <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#38bdf8', marginTop: '2px' }}>
+                    {safeApplications.filter(a => a.status === 'PENDING_REVIEW').length}
+                  </div>
+                </div>
+
+                <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ fontSize: '0.72rem', color: '#94a3b8' }}>ACTIVE TEAMS</div>
+                  <div style={{ fontSize: '1.35rem', fontWeight: 800, color: '#34d399', marginTop: '2px' }}>
+                    {safeTeams.length}
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            {/* 2. Participant Applications Section */}
+            <section className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Users size={18} className="text-cyan-400" />
+                  Participant & Team Applications
+                </h2>
+                <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>{safeApplications.length} total</span>
+              </div>
+
+              {safeApplications.length === 0 ? (
+                <div style={{ padding: '24px', textAlign: 'center', color: '#94a3b8', fontSize: '0.85rem' }}>
+                  No participant applications to review at this moment.
+                </div>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxHeight: '420px', overflowY: 'auto', paddingRight: '4px' }}>
+                  {safeApplications.map(app => (
+                    <div
+                      key={app.id}
+                      style={{
+                        padding: '14px',
+                        borderRadius: '10px',
+                        background: 'rgba(0,0,0,0.35)',
+                        border: '1px solid rgba(255,255,255,0.06)',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '10px',
+                        borderLeft: app.status === 'APPROVED' ? '3px solid #10b981' : app.status === 'REJECTED' ? '3px solid #f43f5e' : '3px solid #00f2fe'
+                      }}
+                    >
+                      <div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
+                          <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: '#00f2fe', fontWeight: 700 }}>
+                            {app.anonymousPlayerId} {app.teamName ? `(${app.teamName})` : ''}
+                          </span>
+                          <StatusBadge status={app.status || 'PENDING_REVIEW'} />
+                        </div>
+                        <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#f8fafc' }}>
+                          {app.tournamentName}
+                        </div>
+                        {app.gamingCredentials && (
+                          <div style={{ fontSize: '0.75rem', color: '#cbd5e1', marginTop: '2px', display: 'flex', gap: '10px', alignItems: 'center' }}>
+                            <RankBadge rank={app.gamingCredentials.rank || 1} size="sm" />
+                            <span>Score: {app.gamingCredentials.score || 0}</span>
+                            <span>{app.gamingCredentials.wins || 0}W</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div style={{ display: 'flex', gap: '6px' }}>
+                        {app.status === 'PENDING_REVIEW' && (
+                          <>
+                            <button
+                              onClick={() => handleReview(app.id, 'REJECT')}
+                              className="btn-danger"
+                              style={{ padding: '4px 10px', fontSize: '0.75rem' }}
+                            >
+                              Reject
+                            </button>
+                            <button
+                              onClick={() => handleReview(app.id, 'APPROVE')}
+                              className="btn-success"
+                              style={{ padding: '4px 12px', fontSize: '0.75rem' }}
+                            >
+                              Approve
+                            </button>
+                          </>
+                        )}
+                        {app.status === 'APPROVED' && (
+                          <span style={{ color: '#34d399', fontSize: '0.75rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <CheckCircle2 size={14} /> Approved
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </section>
+          </div>
+
+          {/* RIGHT COLUMN: My Managed Tournaments List */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#f8fafc' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 800, color: '#f8fafc', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <Shield size={18} className="text-purple-400" />
                 My Managed Tournaments
               </h2>
-              <button onClick={() => setShowCreateModal(true)} className="btn-purple" style={{ padding: '6px 16px', fontSize: '0.8rem' }}>
-                <PlusCircle size={14} /> Create Tournament
-              </button>
+              <span style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                {myCreatedTournaments.length} on-chain {myCreatedTournaments.length === 1 ? 'tournament' : 'tournaments'}
+              </span>
             </div>
 
             {myCreatedTournaments.length === 0 ? (
-              <div className="glass-panel" style={{ padding: '40px', textAlign: 'center', color: '#94a3b8' }}>
-                You haven't created any tournaments yet.
-                <div style={{ marginTop: '12px' }}>
-                  <button onClick={() => setShowCreateModal(true)} className="btn-purple" style={{ padding: '6px 16px', fontSize: '0.85rem' }}>
-                    <PlusCircle size={14} /> Create Your First Tournament
-                  </button>
+              <div className="glass-panel" style={{ padding: '48px 24px', textAlign: 'center', color: '#94a3b8', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '14px' }}>
+                <Trophy size={36} className="text-purple-400 opacity-60" />
+                <div>
+                  <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc', marginBottom: '4px' }}>No Active Tournaments Available Yet</div>
+                  <div style={{ fontSize: '0.85rem', maxWidth: '360px' }}>
+                    Click Create Tournament to deploy the smart contract on Midnight Preprod and host your first competitive event.
+                  </div>
                 </div>
+                <button
+                  onClick={() => setShowCreateModal(true)}
+                  className="btn-purple"
+                  style={{ padding: '8px 20px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer' }}
+                >
+                  <PlusCircle size={15} /> + Create Your First Tournament
+                </button>
               </div>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
@@ -597,25 +893,26 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                     key={tourney.id}
                     className="glass-panel"
                     style={{
-                      padding: '20px',
+                      padding: '18px',
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
                       flexWrap: 'wrap',
-                      gap: '16px'
+                      gap: '14px',
+                      borderLeft: '4px solid #a855f7'
                     }}
                   >
                     <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
                         <StatusBadge status={tourney.status || 'OPEN'} />
                         <span style={{ fontSize: '0.75rem', color: '#c084fc', fontWeight: 700 }}>
                           {tourney.gameTitle} • {tourney.tournamentType || 'SOLO'}
                         </span>
                       </div>
-                      <h3 style={{ fontSize: '1.15rem', fontWeight: 700, color: '#f8fafc' }}>
+                      <h3 style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc', margin: '2px 0' }}>
                         {tourney.name}
                       </h3>
-                      <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '4px', display: 'flex', gap: '16px', flexWrap: 'wrap' }}>
+                      <div style={{ fontSize: '0.78rem', color: '#94a3b8', marginTop: '4px', display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
                         {tourney.tournamentType === 'TEAM' ? (
                           <>
                             <span>Teams: <strong style={{ color: '#f8fafc' }}>{tourney.currentTeams || 0} / {tourney.maxTeams || 16}</strong></span>
@@ -636,14 +933,15 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                       >
                         View Details
                       </button>
-                      {tourney.status === 'COMPLETED' && (
+                      {tourney.status !== 'ARCHIVED' && (
                         <button
                           onClick={() => setTournamentToDelete(tourney)}
+                          title="Archive this tournament on-chain (requires 1AM Wallet)"
                           style={{
-                            padding: '6px 14px',
+                            padding: '6px 12px',
                             fontSize: '0.8rem',
-                            background: 'rgba(239, 68, 68, 0.15)',
-                            border: '1px solid rgba(239, 68, 68, 0.4)',
+                            background: 'rgba(239, 68, 68, 0.12)',
+                            border: '1px solid rgba(239, 68, 68, 0.35)',
                             color: '#f87171',
                             borderRadius: '6px',
                             cursor: 'pointer',
@@ -653,7 +951,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                             fontWeight: 600
                           }}
                         >
-                          <Trash2 size={13} /> Delete Tournament
+                          <Trash2 size={13} /> Archive
                         </button>
                       )}
                     </div>
@@ -661,105 +959,29 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                 ))}
               </div>
             )}
-          </section>
-
-          {/* Participant Review Section */}
-          <section style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-            <h2 style={{ fontSize: '1.3rem', fontWeight: 800, color: '#f8fafc' }}>
-              Participant & Team Applications
-            </h2>
-
-            {safeApplications.length === 0 ? (
-              <div className="glass-panel" style={{ padding: '30px', textAlign: 'center', color: '#94a3b8' }}>
-                No participant applications to review.
-              </div>
-            ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                {safeApplications.map(app => (
-                  <div
-                    key={app.id}
-                    className="glass-panel"
-                    style={{
-                      padding: '18px',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      flexWrap: 'wrap',
-                      gap: '14px',
-                      borderLeft: app.status === 'APPROVED' ? '4px solid #10b981' : app.status === 'REJECTED' ? '4px solid #f43f5e' : '4px solid #00f2fe'
-                    }}
-                  >
-                    <div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '0.75rem', fontFamily: 'var(--font-mono)', color: '#00f2fe', fontWeight: 700 }}>
-                          {app.anonymousPlayerId} {app.teamName ? `(${app.teamName})` : ''}
-                        </span>
-                        <StatusBadge status={app.status || 'PENDING_REVIEW'} />
-                      </div>
-                      <div style={{ fontSize: '0.95rem', fontWeight: 700, color: '#f8fafc' }}>
-                        {app.tournamentName}
-                      </div>
-                      {app.gamingCredentials && (
-                        <div style={{ fontSize: '0.8rem', color: '#cbd5e1', marginTop: '4px', display: 'flex', gap: '12px', alignItems: 'center' }}>
-                          <RankBadge rank={app.gamingCredentials.rank || 1} size="sm" />
-                          <span>Score: {app.gamingCredentials.score || 0}</span>
-                          <span>{app.gamingCredentials.wins || 0}W / {app.gamingCredentials.losses || 0}L</span>
-                        </div>
-                      )}
-                    </div>
-
-                    <div style={{ display: 'flex', gap: '8px' }}>
-                      {app.status === 'PENDING_REVIEW' && (
-                        <>
-                          <button
-                            onClick={() => handleReview(app.id, 'REJECT')}
-                            className="btn-danger"
-                            style={{ padding: '6px 14px', fontSize: '0.8rem' }}
-                          >
-                            Reject
-                          </button>
-                          <button
-                            onClick={() => handleReview(app.id, 'APPROVE')}
-                            className="btn-success"
-                            style={{ padding: '6px 16px', fontSize: '0.8rem' }}
-                          >
-                            Approve
-                          </button>
-                        </>
-                      )}
-                      {app.status === 'APPROVED' && (
-                        <span style={{ color: '#34d399', fontSize: '0.8rem', fontWeight: 700, display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <CheckCircle2 size={16} /> Verified & Approved
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-        </>
+          </div>
+        </div>
       )}
 
-      {/* Comprehensive Organizer Create Tournament Modal */}
+      {/* Compact Responsive Organizer Create Tournament Modal */}
       {showCreateModal && (
         <Modal isOpen={true} onClose={() => setShowCreateModal(false)} title="Create Real On-Chain Tournament">
-          <form onSubmit={handleCreateTournament} style={{ display: 'flex', flexDirection: 'column', gap: '16px', maxHeight: '75vh', overflowY: 'auto', paddingRight: '4px' }}>
+          <form onSubmit={handleCreateTournament} style={{ display: 'flex', flexDirection: 'column', gap: '14px', maxHeight: '78vh', overflowY: 'auto', paddingRight: '6px' }}>
             {formError && (
               <div style={{ padding: '10px 14px', background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.4)', borderRadius: '8px', color: '#f87171', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <AlertCircle size={16} /> {formError}
               </div>
             )}
 
-            {/* Basic Information */}
+            {/* 1. Basic Information */}
             <div style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '12px' }}>
-              <h4 style={{ fontSize: '0.9rem', color: '#00f2fe', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Trophy size={15} /> 1. Basic Information
+              <h4 style={{ fontSize: '0.88rem', color: '#00f2fe', fontWeight: 700, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Trophy size={14} /> 1. Basic Information
               </h4>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '3px' }}>
                     Tournament Name *
                   </label>
                   <input
@@ -768,14 +990,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                     value={newTourneyName}
                     onChange={e => setNewTourneyName(e.target.value)}
                     className="glass-panel"
-                    style={{ width: '100%', padding: '8px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '8px', fontSize: '0.85rem' }}
+                    style={{ width: '100%', padding: '7px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.85rem' }}
                     required
                   />
                 </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '4px' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '3px' }}>
                       Game Title *
                     </label>
                     <input
@@ -784,20 +1006,20 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                       value={newGameTitle}
                       onChange={e => setNewGameTitle(e.target.value)}
                       className="glass-panel"
-                      style={{ width: '100%', padding: '8px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '8px', fontSize: '0.85rem' }}
+                      style={{ width: '100%', padding: '7px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.85rem' }}
                       required
                     />
                   </div>
 
                   <div>
-                    <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '4px' }}>
+                    <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '3px' }}>
                       Category
                     </label>
                     <select
                       value={newCategory}
                       onChange={e => setNewCategory(e.target.value as GameCategory)}
                       className="glass-panel"
-                      style={{ width: '100%', padding: '8px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '8px', fontSize: '0.85rem' }}
+                      style={{ width: '100%', padding: '7px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.85rem' }}
                     >
                       <option value="Battle Royale">Battle Royale</option>
                       <option value="FPS">FPS</option>
@@ -808,7 +1030,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '3px' }}>
                     Tournament Type *
                   </label>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px' }}>
@@ -816,13 +1038,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                       type="button"
                       onClick={() => setNewTourneyType('SOLO')}
                       style={{
-                        padding: '10px',
-                        borderRadius: '8px',
+                        padding: '8px',
+                        borderRadius: '6px',
                         border: newTourneyType === 'SOLO' ? '2px solid #00f2fe' : '1px solid rgba(255,255,255,0.1)',
                         background: newTourneyType === 'SOLO' ? 'rgba(0, 242, 254, 0.15)' : 'rgba(0,0,0,0.3)',
                         color: newTourneyType === 'SOLO' ? '#00f2fe' : '#94a3b8',
                         fontWeight: 700,
-                        fontSize: '0.85rem',
+                        fontSize: '0.82rem',
                         cursor: 'pointer'
                       }}
                     >
@@ -833,13 +1055,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                       type="button"
                       onClick={() => setNewTourneyType('TEAM')}
                       style={{
-                        padding: '10px',
-                        borderRadius: '8px',
+                        padding: '8px',
+                        borderRadius: '6px',
                         border: newTourneyType === 'TEAM' ? '2px solid #a855f7' : '1px solid rgba(255,255,255,0.1)',
                         background: newTourneyType === 'TEAM' ? 'rgba(168, 85, 247, 0.2)' : 'rgba(0,0,0,0.3)',
                         color: newTourneyType === 'TEAM' ? '#c084fc' : '#94a3b8',
                         fontWeight: 700,
-                        fontSize: '0.85rem',
+                        fontSize: '0.82rem',
                         cursor: 'pointer'
                       }}
                     >
@@ -850,24 +1072,24 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* Team / Solo Capacity Configuration */}
+            {/* 2. Team / Solo Capacity Configuration */}
             <div style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '12px' }}>
-              <h4 style={{ fontSize: '0.9rem', color: '#a855f7', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Users size={15} /> 2. {newTourneyType === 'TEAM' ? 'Team Configuration' : 'Player Capacity'}
+              <h4 style={{ fontSize: '0.88rem', color: '#a855f7', fontWeight: 700, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Users size={14} /> 2. {newTourneyType === 'TEAM' ? 'Team Configuration' : 'Player Capacity'}
               </h4>
 
               {newTourneyType === 'TEAM' ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '4px' }}>
-                        Team Size (Players per team)
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '3px' }}>
+                        Team Size
                       </label>
                       <select
                         value={newTeamSize}
                         onChange={e => setNewTeamSize(Number(e.target.value))}
                         className="glass-panel"
-                        style={{ width: '100%', padding: '8px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '8px', fontSize: '0.85rem' }}
+                        style={{ width: '100%', padding: '7px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.85rem' }}
                       >
                         <option value={2}>2 Players (Duo)</option>
                         <option value={4}>4 Players (Squad)</option>
@@ -876,14 +1098,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '4px' }}>
+                      <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '3px' }}>
                         Maximum Teams
                       </label>
                       <select
                         value={newMaxTeams}
                         onChange={e => setNewMaxTeams(Number(e.target.value))}
                         className="glass-panel"
-                        style={{ width: '100%', padding: '8px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '8px', fontSize: '0.85rem' }}
+                        style={{ width: '100%', padding: '7px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.85rem' }}
                       >
                         <option value={8}>8 Teams</option>
                         <option value={16}>16 Teams</option>
@@ -893,14 +1115,14 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                     </div>
                   </div>
 
-                  <div style={{ padding: '10px 14px', background: 'rgba(168, 85, 247, 0.12)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '8px', fontSize: '0.85rem', color: '#e9d5ff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <span>Automatic Capacity Calculation:</span>
+                  <div style={{ padding: '8px 12px', background: 'rgba(168, 85, 247, 0.12)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '6px', fontSize: '0.8rem', color: '#e9d5ff', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Automatic Capacity:</span>
                     <strong>{newTeamSize} × {newMaxTeams} = {calculatedMaxPlayers} Maximum Players</strong>
                   </div>
                 </div>
               ) : (
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.78rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 600, marginBottom: '3px' }}>
                     Maximum Solo Players
                   </label>
                   <input
@@ -910,21 +1132,21 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                     min={4}
                     max={500}
                     className="glass-panel"
-                    style={{ width: '100%', padding: '8px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '8px', fontSize: '0.85rem' }}
+                    style={{ width: '100%', padding: '7px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.85rem' }}
                   />
                 </div>
               )}
             </div>
 
-            {/* Schedule Configuration */}
+            {/* 3. Schedule Configuration */}
             <div style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '12px' }}>
-              <h4 style={{ fontSize: '0.9rem', color: '#38bdf8', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Calendar size={15} /> 3. Tournament Schedule (Date & Time)
+              <h4 style={{ fontSize: '0.88rem', color: '#38bdf8', fontWeight: 700, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Calendar size={14} /> 3. Schedule (Registration & Event)
               </h4>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#cbd5e1', marginBottom: '2px' }}>
                     Registration Opens
                   </label>
                   <input
@@ -932,13 +1154,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                     value={regStart}
                     onChange={e => setRegStart(e.target.value)}
                     className="glass-panel"
-                    style={{ width: '100%', padding: '7px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
+                    style={{ width: '100%', padding: '6px 8px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.78rem' }}
                     required
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#cbd5e1', marginBottom: '2px' }}>
                     Registration Closes
                   </label>
                   <input
@@ -946,13 +1168,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                     value={regEnd}
                     onChange={e => setRegEnd(e.target.value)}
                     className="glass-panel"
-                    style={{ width: '100%', padding: '7px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
+                    style={{ width: '100%', padding: '6px 8px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.78rem' }}
                     required
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#cbd5e1', marginBottom: '2px' }}>
                     Tournament Starts
                   </label>
                   <input
@@ -960,13 +1182,13 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                     value={tourneyStart}
                     onChange={e => setTourneyStart(e.target.value)}
                     className="glass-panel"
-                    style={{ width: '100%', padding: '7px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
+                    style={{ width: '100%', padding: '6px 8px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.78rem' }}
                     required
                   />
                 </div>
 
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', marginBottom: '4px' }}>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#cbd5e1', marginBottom: '2px' }}>
                     Tournament Ends
                   </label>
                   <input
@@ -974,34 +1196,34 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                     value={tourneyEnd}
                     onChange={e => setTourneyEnd(e.target.value)}
                     className="glass-panel"
-                    style={{ width: '100%', padding: '7px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
+                    style={{ width: '100%', padding: '6px 8px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.78rem' }}
                     required
                   />
                 </div>
               </div>
             </div>
 
-            {/* Location Configuration */}
+            {/* 4. Location Configuration */}
             <div style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '12px' }}>
-              <h4 style={{ fontSize: '0.9rem', color: '#34d399', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <MapPin size={15} /> 4. Tournament Location
+              <h4 style={{ fontSize: '0.88rem', color: '#34d399', fontWeight: 700, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <MapPin size={14} /> 4. Location & Venue
               </h4>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '6px' }}>
                   {(['ONLINE', 'OFFLINE', 'HYBRID'] as LocationType[]).map(type => (
                     <button
                       key={type}
                       type="button"
                       onClick={() => setLocationType(type)}
                       style={{
-                        padding: '8px',
+                        padding: '6px',
                         borderRadius: '6px',
                         border: locationType === type ? '2px solid #34d399' : '1px solid rgba(255,255,255,0.1)',
                         background: locationType === type ? 'rgba(16, 185, 129, 0.15)' : 'rgba(0,0,0,0.3)',
                         color: locationType === type ? '#34d399' : '#94a3b8',
                         fontWeight: 700,
-                        fontSize: '0.8rem',
+                        fontSize: '0.78rem',
                         cursor: 'pointer'
                       }}
                     >
@@ -1011,9 +1233,9 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                 </div>
 
                 {(locationType === 'ONLINE' || locationType === 'HYBRID') && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '8px' }}>
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', marginBottom: '4px' }}>
+                      <label style={{ display: 'block', fontSize: '0.72rem', color: '#cbd5e1', marginBottom: '2px' }}>
                         Online Platform
                       </label>
                       <input
@@ -1021,12 +1243,12 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                         value={onlinePlatform}
                         onChange={e => setOnlinePlatform(e.target.value)}
                         className="glass-panel"
-                        style={{ width: '100%', padding: '7px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
+                        style={{ width: '100%', padding: '6px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
                       />
                     </div>
 
                     <div>
-                      <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', marginBottom: '4px' }}>
+                      <label style={{ display: 'block', fontSize: '0.72rem', color: '#cbd5e1', marginBottom: '2px' }}>
                         Server / Region
                       </label>
                       <input
@@ -1034,22 +1256,22 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                         value={serverRegion}
                         onChange={e => setServerRegion(e.target.value)}
                         className="glass-panel"
-                        style={{ width: '100%', padding: '7px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
+                        style={{ width: '100%', padding: '6px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
                       />
                     </div>
                   </div>
                 )}
 
                 {(locationType === 'OFFLINE' || locationType === 'HYBRID') && (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
                       <input
                         type="text"
                         placeholder="Venue Name (e.g. Pune Gaming Arena)"
                         value={venueName}
                         onChange={e => setVenueName(e.target.value)}
                         className="glass-panel"
-                        style={{ width: '100%', padding: '7px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
+                        style={{ width: '100%', padding: '6px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
                         required={locationType === 'OFFLINE'}
                       />
                       <input
@@ -1058,34 +1280,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                         value={city}
                         onChange={e => setCity(e.target.value)}
                         className="glass-panel"
-                        style={{ width: '100%', padding: '7px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
+                        style={{ width: '100%', padding: '6px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
                         required={locationType === 'OFFLINE'}
-                      />
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
-                      <input
-                        type="text"
-                        placeholder="State (e.g. Maharashtra)"
-                        value={state}
-                        onChange={e => setState(e.target.value)}
-                        className="glass-panel"
-                        style={{ width: '100%', padding: '7px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Country"
-                        value={country}
-                        onChange={e => setCountry(e.target.value)}
-                        className="glass-panel"
-                        style={{ width: '100%', padding: '7px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
-                      />
-                      <input
-                        type="text"
-                        placeholder="Postal Code"
-                        value={postalCode}
-                        onChange={e => setPostalCode(e.target.value)}
-                        className="glass-panel"
-                        style={{ width: '100%', padding: '7px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
                       />
                     </div>
                   </div>
@@ -1093,22 +1289,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
               </div>
             </div>
 
-            {/* Eligibility Requirements & Prize */}
-            <div>
-              <h4 style={{ fontSize: '0.9rem', color: '#fbbf24', fontWeight: 700, marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Shield size={15} /> 5. Player Eligibility & Prize Pool
+            {/* 5. Eligibility Requirements */}
+            <div style={{ borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '12px' }}>
+              <h4 style={{ fontSize: '0.88rem', color: '#fbbf24', fontWeight: 700, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Shield size={14} /> 5. Player Eligibility Requirements
               </h4>
-
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '10px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', marginBottom: '4px' }}>
-                    Minimum Rank Requirement
-                  </label>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#cbd5e1', marginBottom: '2px' }}>Minimum Rank</label>
                   <select
                     value={newMinRank}
                     onChange={e => setNewMinRank(Number(e.target.value) as RankTier)}
                     className="glass-panel"
-                    style={{ width: '100%', padding: '8px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '8px', fontSize: '0.85rem' }}
+                    style={{ width: '100%', padding: '6px 8px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.78rem' }}
                   >
                     <option value={RankTier.BRONZE}>Bronze (Tier 1)</option>
                     <option value={RankTier.SILVER}>Silver (Tier 2)</option>
@@ -1119,61 +1312,97 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                     <option value={RankTier.GRANDMASTER}>Grandmaster (Tier 7)</option>
                   </select>
                 </div>
-
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', marginBottom: '4px' }}>
-                    Minimum Score
-                  </label>
-                  <input
-                    type="number"
-                    value={newMinScore}
-                    onChange={e => setNewMinScore(Number(e.target.value))}
-                    className="glass-panel"
-                    style={{ width: '100%', padding: '8px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '8px', fontSize: '0.85rem' }}
-                  />
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#cbd5e1', marginBottom: '2px' }}>Minimum Score</label>
+                  <input type="number" value={newMinScore} onChange={e => setNewMinScore(Number(e.target.value))} min={0} className="glass-panel" style={{ width: '100%', padding: '6px 8px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.78rem' }} />
                 </div>
-
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', marginBottom: '4px' }}>
-                    Minimum Wins
-                  </label>
-                  <input
-                    type="number"
-                    value={newMinWins}
-                    onChange={e => setNewMinWins(Number(e.target.value))}
-                    className="glass-panel"
-                    style={{ width: '100%', padding: '8px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '8px', fontSize: '0.85rem' }}
-                  />
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#cbd5e1', marginBottom: '2px' }}>Minimum Wins</label>
+                  <input type="number" value={newMinWins} onChange={e => setNewMinWins(Number(e.target.value))} min={0} className="glass-panel" style={{ width: '100%', padding: '6px 8px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.78rem' }} />
                 </div>
+              </div>
+            </div>
 
+            {/* 6. Prize Pool */}
+            <div>
+              <h4 style={{ fontSize: '0.88rem', color: '#34d399', fontWeight: 700, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Trophy size={14} /> 6. Prize Pool
+              </h4>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '8px' }}>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', color: '#cbd5e1', marginBottom: '2px' }}>Prize Amount</label>
+                    <input
+                      type="text"
+                      placeholder="e.g. 10,000"
+                      value={prizeAmount}
+                      onChange={e => setPrizeAmount(e.target.value)}
+                      className="glass-panel"
+                      style={{ width: '100%', padding: '7px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'block', fontSize: '0.72rem', color: '#cbd5e1', marginBottom: '2px' }}>Currency</label>
+                    <select
+                      value={prizeCurrency}
+                      onChange={e => setPrizeCurrency(e.target.value)}
+                      className="glass-panel"
+                      style={{ width: '100%', padding: '7px 8px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
+                    >
+                      <option value="INR">INR (₹)</option>
+                      <option value="USD">USD ($)</option>
+                      <option value="EUR">EUR (€)</option>
+                      <option value="USDT">USDT</option>
+                      <option value="Gift Cards">Gift Cards</option>
+                      <option value="Gaming Gear">Gaming Gear</option>
+                      <option value="TBD">TBD</option>
+                    </select>
+                  </div>
+                </div>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.75rem', color: '#cbd5e1', marginBottom: '4px' }}>
-                    Prize Pool
-                  </label>
+                  <label style={{ display: 'block', fontSize: '0.72rem', color: '#cbd5e1', marginBottom: '2px' }}>Prize Breakdown</label>
                   <input
                     type="text"
-                    value={newPrize}
-                    onChange={e => setNewPrize(e.target.value)}
+                    placeholder="e.g. 1st: ₹5,000 · 2nd: ₹3,000 · 3rd: ₹2,000"
+                    value={prizeDescription}
+                    onChange={e => setPrizeDescription(e.target.value)}
                     className="glass-panel"
-                    style={{ width: '100%', padding: '8px 12px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '8px', fontSize: '0.85rem' }}
+                    style={{ width: '100%', padding: '7px 10px', background: 'rgba(10, 15, 26, 0.7)', color: '#f8fafc', border: '1px solid rgba(255, 255, 255, 0.12)', borderRadius: '6px', fontSize: '0.8rem' }}
                   />
                 </div>
               </div>
             </div>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '14px', paddingTop: '10px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
-              <button type="button" onClick={() => setShowCreateModal(false)} className="btn-secondary" style={{ padding: '8px 16px', fontSize: '0.85rem' }}>
+            {!isContractDeployed && (
+              <div style={{
+                padding: '8px 12px',
+                background: 'rgba(56, 189, 248, 0.08)',
+                border: '1px solid rgba(56, 189, 248, 0.25)',
+                borderRadius: '6px',
+                fontSize: '0.78rem',
+                color: '#38bdf8',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px'
+              }}>
+                <Sparkles size={14} />
+                <span>PrivateRank contract is not deployed yet. It will be deployed automatically when you submit this tournament.</span>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px', marginTop: '8px', paddingTop: '10px', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+              <button type="button" onClick={() => setShowCreateModal(false)} className="btn-secondary" style={{ padding: '7px 16px', fontSize: '0.82rem' }}>
                 Cancel
               </button>
-              <button type="submit" className="btn-purple" style={{ padding: '8px 20px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <Sparkles size={15} /> Submit to 1AM Wallet
+              <button type="submit" className="btn-purple" style={{ padding: '7px 22px', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 700 }}>
+                <Sparkles size={14} /> Create Tournament
               </button>
             </div>
           </form>
         </Modal>
       )}
 
-      {/* Delete Tournament Confirmation Modal */}
+      {/* Archive Tournament Confirmation Modal */}
       {tournamentToDelete && (
         <div
           style={{
@@ -1191,7 +1420,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           <div
             className="glass-panel"
             style={{
-              maxWidth: '480px',
+              maxWidth: '500px',
               width: '100%',
               padding: '32px 26px',
               borderRadius: '16px',
@@ -1202,14 +1431,10 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '14px', color: '#ef4444' }}>
               <AlertCircle size={28} />
-              <h2 style={{ fontSize: '1.35rem', fontWeight: 800, color: '#f8fafc', margin: 0 }}>
-                Delete Tournament?
+              <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc', margin: 0 }}>
+                Archive Tournament on Midnight Preprod
               </h2>
             </div>
-
-            <p style={{ fontSize: '0.9rem', color: '#94a3b8', lineHeight: 1.5, marginBottom: '16px' }}>
-              This tournament has already ended.
-            </p>
 
             <div
               style={{
@@ -1217,7 +1442,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                 border: '1px solid rgba(255, 255, 255, 0.08)',
                 borderRadius: '10px',
                 padding: '12px 16px',
-                marginBottom: '16px'
+                marginBottom: '14px'
               }}
             >
               <div style={{ fontSize: '0.72rem', color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
@@ -1226,18 +1451,31 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
               <div style={{ fontSize: '1.05rem', fontWeight: 700, color: '#f8fafc', marginTop: '2px' }}>
                 {tournamentToDelete.name}
               </div>
+              <div style={{ fontSize: '0.8rem', color: '#94a3b8', marginTop: '4px' }}>
+                Current Status: <strong style={{ color: '#f8fafc' }}>{tournamentToDelete.status}</strong>
+              </div>
             </div>
 
-            <p style={{ fontSize: '0.85rem', color: '#cbd5e1', lineHeight: 1.5, marginBottom: '24px' }}>
-              This action will remove the tournament from the active tournament list.
-              <br />
-              <strong>Are you sure?</strong>
+            <p style={{ fontSize: '0.87rem', color: '#cbd5e1', lineHeight: 1.6, marginBottom: '8px' }}>
+              This will submit a real <strong style={{ color: '#f87171' }}>Midnight Preprod on-chain transaction</strong>:
             </p>
+            <ul style={{ fontSize: '0.83rem', color: '#94a3b8', paddingLeft: '18px', lineHeight: 1.7, marginBottom: '16px' }}>
+              <li>Your <strong style={{ color: '#38bdf8' }}>1AM Wallet</strong> will prompt for approval and DUST fee.</li>
+              <li>If the tournament is OPEN → it will be <strong style={{ color: '#fbbf24' }}>closed</strong> first, then <strong style={{ color: '#f87171' }}>archived</strong>.</li>
+              <li>Archived tournaments remain on-chain but are hidden from active player lists.</li>
+              <li>This action <strong style={{ color: '#f87171' }}>cannot be undone</strong>.</li>
+            </ul>
+
+            {formError && (
+              <div style={{ padding: '10px 14px', background: 'rgba(239, 68, 68, 0.12)', border: '1px solid rgba(239, 68, 68, 0.35)', borderRadius: '8px', color: '#f87171', fontSize: '0.82rem', marginBottom: '14px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <AlertCircle size={15} /> {formError}
+              </div>
+            )}
 
             <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
               <button
                 type="button"
-                onClick={() => setTournamentToDelete(null)}
+                onClick={() => { setTournamentToDelete(null); setFormError(null); }}
                 disabled={isDeleting}
                 className="btn-secondary"
                 style={{ padding: '8px 20px', fontSize: '0.9rem' }}
@@ -1248,19 +1486,25 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                 type="button"
                 onClick={handleConfirmDelete}
                 disabled={isDeleting}
-                className="btn-danger"
                 style={{
-                  padding: '8px 20px',
+                  padding: '8px 22px',
                   fontSize: '0.9rem',
-                  background: '#ef4444',
+                  background: isDeleting ? 'rgba(239, 68, 68, 0.5)' : '#ef4444',
                   color: '#ffffff',
                   border: 'none',
                   borderRadius: '8px',
                   fontWeight: 700,
-                  cursor: isDeleting ? 'not-allowed' : 'pointer'
+                  cursor: isDeleting ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px'
                 }}
               >
-                {isDeleting ? 'Deleting...' : 'Delete Tournament'}
+                {isDeleting ? (
+                  <><Loader2 size={15} className="animate-spin" /> Archiving on-chain...</>
+                ) : (
+                  <><Trash2 size={14} /> Archive On-Chain</>
+                )}
               </button>
             </div>
           </div>
@@ -1268,12 +1512,19 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
       )}
 
       {/* On-Chain Transaction Progress Modal */}
-      <TransactionModal
-        progress={txProgress}
-        receipt={txReceipt}
-        onClose={resetTxState}
-        onRetry={resetTxState}
-      />
+      {!isModalDismissed && (
+        <TransactionModal
+          progress={txProgress}
+          receipt={txReceipt}
+          onClose={() => {
+            setIsModalDismissed(true);
+            resetTxState();
+          }}
+          onRetry={resetTxState}
+          onRefresh={handleManualSync}
+          onDismissBackground={() => setIsModalDismissed(true)}
+        />
+      )}
     </div>
   );
 };

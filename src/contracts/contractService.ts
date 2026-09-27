@@ -14,9 +14,13 @@ import {
   ZKProofPayload 
 } from '../types';
 import { ZkProverService } from './zkProver';
-import { getPreprodConfig } from '../config/network';
+import { getPreprodConfig, PREPROD_CONFIG, verifyContractDeployedOnPreprod, setDeployedContractAddress } from '../config/network';
 import { safeAddressCompare, normalizeAddress } from '../utils/crypto';
 import { AuthService } from '../wallet/authService';
+import { OneAmConnector } from '../wallet/oneAmConnector';
+
+import * as compactRuntime from '@midnight-ntwrk/compact-runtime';
+import { ledger as getLedger } from './managed/privaterank/contract/index.js';
 
 const TOURNAMENTS_STORAGE_KEY = 'privaterank_midnight_tournaments_v4';
 const APPLICATIONS_STORAGE_KEY = 'privaterank_midnight_applications_v4';
@@ -27,18 +31,265 @@ export class ContractService {
     return getPreprodConfig();
   }
 
+  /**
+   * Fetch tournaments from the Midnight Preprod blockchain via official GraphQL indexer.
+   * Directly queries and deserializes the deployed ContractState from Midnight Preprod.
+   * Both Organizer and Player portals read from this single source of on-chain truth.
+   */
+  /**
+   * Try to discover the PrivateRank contract address from the Midnight Preprod indexer
+   * by scanning recent contract actions for a contract that has the createTournament circuit.
+   * This allows players (fresh browser, no localStorage) to find on-chain tournaments.
+   */
+  private static async discoverContractAddress(): Promise<string | null> {
+    try {
+      // Query the indexer for recent contracts
+      const query = `
+        query FindPrivateRankContract {
+          contractActions(last: 50) {
+            nodes {
+              address
+              state
+            }
+          }
+        }
+      `;
+      const res = await fetch(PREPROD_CONFIG.indexerUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query })
+      });
+      if (!res.ok) return null;
+      const json = await res.json();
+      const nodes: Array<{ address: string; state: string }> = json?.data?.contractActions?.nodes || [];
+      for (const node of nodes) {
+        if (!node.address || !node.state) continue;
+        try {
+          const hex = node.state.replace(/^0x/i, '');
+          const bytes = new Uint8Array(hex.length / 2);
+          for (let i = 0; i < bytes.length; i++) {
+            bytes[i] = parseInt(hex.substr(i * 2, 2), 16);
+          }
+          const cs = compactRuntime.ContractState.deserialize(bytes);
+          const lv = getLedger(cs.data);
+          // If the ledger has a tournaments map, this is the PrivateRank contract
+          if (lv && lv.tournaments) {
+            console.log('[ContractService] Auto-discovered PrivateRank contract at:', node.address);
+            setDeployedContractAddress(node.address);
+            return node.address;
+          }
+        } catch {
+          // Not PrivateRank — try next
+        }
+      }
+    } catch (e) {
+      console.warn('[ContractService] discoverContractAddress failed:', e);
+    }
+    return null;
+  }
+
+  public static async fetchTournamentsFromChain(): Promise<Tournament[]> {
+    try {
+      // Resolve contract address — use stored value or auto-discover from indexer
+      let contractAddress = PREPROD_CONFIG.contractAddress;
+      if (!contractAddress) {
+        console.log('[ContractService] No contract address stored. Attempting auto-discovery from Preprod indexer...');
+        contractAddress = await this.discoverContractAddress() ?? '';
+      }
+
+      const tournamentsMap = new Map<string, Tournament>();
+
+      if (contractAddress && /^[0-9a-fA-F]{64}$/.test(contractAddress)) {
+        const query = `
+          query GetContractState($address: HexEncoded!) {
+            contractAction(address: $address) {
+              address
+              state
+              transaction {
+                hash
+                block {
+                  height
+                  hash
+                }
+              }
+            }
+          }
+        `;
+
+        const res = await fetch(PREPROD_CONFIG.indexerUrl, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'Pragma': 'no-cache'
+          },
+          body: JSON.stringify({ query, variables: { address: contractAddress } })
+        });
+
+        if (res.ok) {
+          const json = await res.json();
+          const contractAction = json?.data?.contractAction;
+          if (contractAction && contractAction.state) {
+            try {
+              const rawHex = contractAction.state.replace(/^0x/i, '');
+              if (rawHex && rawHex.length % 2 === 0) {
+                const rawBytes = new Uint8Array(rawHex.length / 2);
+                for (let i = 0; i < rawBytes.length; i++) {
+                  rawBytes[i] = parseInt(rawHex.substr(i * 2, 2), 16);
+                }
+
+                const deserialized = compactRuntime.ContractState.deserialize(rawBytes);
+                const ledgerView = getLedger(deserialized.data);
+
+                if (ledgerView && ledgerView.tournaments) {
+                  const count = ledgerView.tournaments.size();
+                  console.log('[ContractService] Reading on-chain tournaments from Preprod ContractState. Count:', count.toString());
+                  for (const [keyBytes, t] of ledgerView.tournaments) {
+                    let keyString = '';
+                    try {
+                      keyString = new TextDecoder('utf-8', { fatal: false }).decode(keyBytes).replace(/\0+$/, '');
+                    } catch {
+                      keyString = '';
+                    }
+                    const keyHex = Array.from(keyBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+                    // Prefer clean printable key string; fall back to hex
+                    const id = keyString && /^[\w\-. ]+$/.test(keyString.trim()) ? keyString.trim() : `t-${keyHex.slice(0, 16)}`;
+
+                    const orgHex = Array.from(t.organizer).map(b => b.toString(16).padStart(2, '0')).join('');
+
+                    const statusNum = Number((t as any).status ?? 1);
+                    let statusStr: TournamentStatus = 'OPEN';
+                    if (statusNum === 0) statusStr = 'DRAFT';
+                    else if (statusNum === 1) statusStr = 'OPEN';
+                    else if (statusNum === 2) statusStr = 'CLOSED';
+                    else if (statusNum === 3) statusStr = 'COMPLETED';
+                    else if (statusNum === 4) statusStr = 'ARCHIVED';
+
+                    const deadlineMs = Number(t.deadline || 0n);
+                    const deadlineIso = deadlineMs > 0 ? new Date(deadlineMs).toISOString() : new Date(Date.now() + 86400000 * 30).toISOString();
+
+                    const onChainTournament: Tournament = {
+                      id,
+                      name: id,
+                      description: '',
+                      gameTitle: 'BGMI',
+                      category: 'Battle Royale' as any,
+                      gameImage: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80',
+                      organizerAddress: orgHex,
+                      organizerName: 'Tournament Organizer',
+                      tournamentType: 'SOLO',
+                      teamSize: 1,
+                      maxTeams: 0,
+                      currentTeams: 0,
+                      requirements: {
+                        minimumRank: Number(t.minRank || 1n),
+                        minimumScore: Number(t.minScore || 0n),
+                        minimumWins: Number(t.minWins || 0n)
+                      },
+                      prizePool: '₹0',
+                      maxParticipants: 64,
+                      currentParticipants: Number(t.applicantCount || 0n),
+                      schedule: {
+                        registrationStart: new Date().toISOString(),
+                        registrationEnd: deadlineIso,
+                        tournamentStart: deadlineIso,
+                        tournamentEnd: new Date(deadlineMs > 0 ? deadlineMs + 86400000 : Date.now() + 86400000 * 31).toISOString()
+                      },
+                      applicationDeadline: deadlineIso,
+                      startDate: deadlineIso,
+                      location: { locationType: 'ONLINE', onlinePlatform: 'Midnight Network Preprod' },
+                      status: statusStr,
+                      applicantCount: Number(t.applicantCount || 0n),
+                      createdAt: new Date().toISOString()
+                    };
+                    tournamentsMap.set(id, onChainTournament);
+                    console.log(`[ContractService] On-chain tournament: id='${id}', status=${statusStr}, organizer=${orgHex.slice(0, 16)}...`);
+                  }
+                }
+              }
+            } catch (stateDecodeErr) {
+              console.warn('[ContractService] Error decoding on-chain tournament state from indexer:', stateDecodeErr);
+            }
+          }
+        }
+      } else {
+        console.log('[ContractService] No contract address available.');
+      }
+
+      // Merge rich metadata (custom description, banner, rules, prize) from saved records matching on-chain id
+      const savedTournaments = this.getTournaments();
+      for (const st of savedTournaments) {
+        const onChain = tournamentsMap.get(st.id);
+        if (onChain) {
+          // On-chain record found: merge in the richer local metadata
+          tournamentsMap.set(st.id, {
+            ...onChain,    // start from on-chain truth
+            // overlay local rich fields
+            name: st.name || onChain.name,
+            description: st.description || onChain.description,
+            gameTitle: st.gameTitle || onChain.gameTitle,
+            category: st.category || onChain.category,
+            gameImage: st.gameImage || onChain.gameImage,
+            organizerName: st.organizerName || onChain.organizerName,
+            prizePool: st.prizePool || onChain.prizePool,
+            maxParticipants: st.maxParticipants || onChain.maxParticipants,
+            tournamentType: st.tournamentType || onChain.tournamentType,
+            teamSize: st.teamSize || onChain.teamSize,
+            rules: st.rules || [],
+            schedule: st.schedule || onChain.schedule,
+            location: st.location || onChain.location,
+            // always use on-chain authoritative values:
+            status: onChain.status,
+            applicantCount: onChain.applicantCount,
+            requirements: onChain.requirements,
+            organizerAddress: onChain.organizerAddress
+          });
+        }
+      }
+
+      const allTournaments = Array.from(tournamentsMap.values());
+      console.log(`[ContractService] fetchTournamentsFromChain returning ${allTournaments.length} tournaments to UI`);
+      return allTournaments;
+    } catch (fetchErr) {
+      console.warn('[ContractService] fetchTournamentsFromChain failure:', fetchErr);
+      return [];
+    }
+  }
+
+
+  private static inMemoryTournaments: Tournament[] = [];
+
+  public static setTournaments(tournaments: Tournament[]): void {
+    this.inMemoryTournaments = tournaments;
+    this.saveTournaments(tournaments);
+  }
+
+  public static addCreatedTournament(tournament: Tournament): void {
+    const list = this.getTournaments();
+    const existingIndex = list.findIndex(t => t.id === tournament.id);
+    if (existingIndex >= 0) {
+      list[existingIndex] = tournament;
+    } else {
+      list.unshift(tournament);
+    }
+    this.setTournaments(list);
+  }
+
   // --- LEDGER STORAGE HELPERS ---
 
   public static getTournaments(): Tournament[] {
     try {
       const stored = localStorage.getItem(TOURNAMENTS_STORAGE_KEY);
       if (stored) {
-        return JSON.parse(stored);
+        const parsed = JSON.parse(stored);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          return parsed;
+        }
       }
     } catch {
       // fallback
     }
-    return [];
+    return this.inMemoryTournaments || [];
   }
 
   private static saveTournaments(tournaments: Tournament[]): void {
@@ -156,7 +407,10 @@ export class ContractService {
 
   public static getTournamentById(id: string): Tournament | null {
     const list = this.getTournaments();
-    const found = list.find(t => t.id === id);
+    let found = list.find(t => t.id === id);
+    if (!found && this.inMemoryTournaments) {
+      found = this.inMemoryTournaments.find(t => t.id === id);
+    }
     if (!found) return null;
     return {
       ...found,
@@ -189,8 +443,8 @@ export class ContractService {
   }): Tournament {
 
     // 1. Authorization invariant
-    if (!AuthService.isOrganizerAuthorized(params.organizerAddress)) {
-      throw new Error('Access Denied: Caller address is not an authorized organizer.');
+    if (!AuthService.isOrganizer()) {
+      throw new Error('Access Denied: Caller is not in Organizer mode.');
     }
 
     const tType = params.tournamentType || 'SOLO';
@@ -273,8 +527,8 @@ export class ContractService {
 
 
   public static publishTournament(tournamentId: string, organizerAddress: string): Tournament {
-    if (!AuthService.isOrganizerAuthorized(organizerAddress)) {
-      throw new Error('Access Denied: Caller address is not an authorized organizer.');
+    if (!AuthService.isOrganizer()) {
+      throw new Error('Access Denied: Caller is not in Organizer mode.');
     }
 
     const tournaments = this.getTournaments();
@@ -291,8 +545,8 @@ export class ContractService {
   }
 
   public static closeTournament(tournamentId: string, organizerAddress: string): Tournament {
-    if (!AuthService.isOrganizerAuthorized(organizerAddress)) {
-      throw new Error('Access Denied: Caller address is not an authorized organizer.');
+    if (!AuthService.isOrganizer()) {
+      throw new Error('Access Denied: Caller is not in Organizer mode.');
     }
 
     const tournaments = this.getTournaments();
@@ -308,8 +562,39 @@ export class ContractService {
     return tournaments[index];
   }
 
+  /**
+   * Archive a tournament in local state after on-chain confirmation.
+   * Called ONLY after a successful on-chain archiveTournament transaction.
+   * No status restriction here — the on-chain circuit enforces CLOSED/COMPLETED constraint.
+   */
+  public static archiveTournament(tournamentId: string, organizerAddress: string): { tournament: Tournament; message: string } {
+    const tournaments = this.getTournaments();
+    const index = tournaments.findIndex(t => t.id === tournamentId);
+    if (index === -1) {
+      // Tournament may be from backend only — not a fatal error
+      console.warn(`[ContractService] archiveTournament: Tournament ${tournamentId} not in local storage`);
+      return {
+        tournament: { id: tournamentId, status: 'ARCHIVED' } as Tournament,
+        message: 'Tournament archived (backend-registered only).'
+      };
+    }
+
+    const tourney = tournaments[index];
+    if (organizerAddress && !safeAddressCompare(tourney.organizerAddress, organizerAddress)) {
+      throw new Error('Unauthorized: Only the creator organizer can archive this tournament.');
+    }
+
+    tournaments[index].status = 'ARCHIVED';
+    this.saveTournaments(tournaments);
+    return { tournament: tournaments[index], message: 'Tournament archived successfully.' };
+  }
+
+  /**
+   * @deprecated Use archiveTournamentOnChain from MidnightTransactionService.
+   * deleteTournament enforces that only COMPLETED tournaments can be deleted/archived by creator organizer.
+   */
   public static deleteTournament(tournamentId: string, organizerAddress: string): { tournament: Tournament; message: string } {
-    if (!AuthService.isOrganizerAuthorized(organizerAddress)) {
+    if (!AuthService.isOrganizer(organizerAddress)) {
       throw new Error('Access Denied: Caller address is not an authorized organizer.');
     }
 
@@ -342,12 +627,11 @@ export class ContractService {
     proof: ZKProofPayload;
   }): Application {
     // Strict Role Separation: Organizer wallets cannot act as players
-    if (AuthService.isOrganizerAuthorized(params.playerWalletAddress)) {
+    if (AuthService.isOrganizer()) {
       throw new Error('Access Restricted: Organizer wallets are not permitted to participate as players or join teams.');
     }
 
-    const tournaments = this.getTournaments();
-    const tourney = tournaments.find(t => t.id === params.tournamentId);
+    const tourney = this.getTournamentById(params.tournamentId);
     if (!tourney) throw new Error('Tournament not found');
 
 
@@ -401,7 +685,14 @@ export class ContractService {
 
     tourney.applicantCount = (tourney.applicantCount || 0) + 1;
     tourney.currentParticipants = (tourney.currentParticipants || 0) + 1;
-    this.saveTournaments(tournaments);
+    const allTourneys = this.getTournaments();
+    const idx = allTourneys.findIndex(t => t.id === tourney.id);
+    if (idx >= 0) {
+      allTourneys[idx] = tourney;
+    } else {
+      allTourneys.unshift(tourney);
+    }
+    this.setTournaments(allTourneys);
 
     return newApp;
   }
@@ -417,7 +708,7 @@ export class ContractService {
     proof?: ZKProofPayload;
   }): Team {
     // Strict Role Separation: Organizer wallets cannot create teams
-    if (AuthService.isOrganizerAuthorized(params.captainWalletAddress)) {
+    if (AuthService.isOrganizer()) {
       throw new Error('Access Restricted: Organizer wallets are not permitted to participate as players or join teams.');
     }
 
@@ -505,7 +796,7 @@ export class ContractService {
     proof?: ZKProofPayload;
   }): Team {
     // Strict Role Separation: Organizer wallets cannot join teams
-    if (AuthService.isOrganizerAuthorized(params.playerWalletAddress)) {
+    if (AuthService.isOrganizer()) {
       throw new Error('Access Restricted: Organizer wallets are not permitted to participate as players or join teams.');
     }
 
@@ -707,8 +998,8 @@ export class ContractService {
     decision: 'APPROVE' | 'REJECT';
     rejectionReason?: string;
   }): Application {
-    if (!AuthService.isOrganizerAuthorized(params.organizerAddress)) {
-      throw new Error('Access Denied: Caller address is not an authorized organizer.');
+    if (!AuthService.isOrganizer()) {
+      throw new Error('Access Denied: Caller is not in Organizer mode.');
     }
 
     const applications = this.getApplications();
@@ -752,3 +1043,4 @@ export class ContractService {
     return this.getApplications();
   }
 }
+

@@ -27,7 +27,7 @@ describe('Midnight ContractService & Solo/Team Tournament System', () => {
 
   beforeEach(() => {
     localStorage.clear();
-    AuthService.registerOrganizer(organizerAddress, 'Main Organizer', 'Midnight Arena');
+    AuthService.selectRole("ORGANIZER");
   });
 
   it('should validate tournament schedule invariants', () => {
@@ -108,6 +108,7 @@ describe('Midnight ContractService & Solo/Team Tournament System', () => {
       location: defaultLocation
     });
 
+    AuthService.selectRole("PLAYER");
     const team = ContractService.createTeam({
       tournamentId: tourney.id,
       captainWalletAddress: player1,
@@ -155,6 +156,7 @@ describe('Midnight ContractService & Solo/Team Tournament System', () => {
     });
 
     // 1. Player 1 creates team (1/2 members)
+    AuthService.selectRole("PLAYER");
     const team = ContractService.createTeam({
       tournamentId: tourney.id,
       captainWalletAddress: player1,
@@ -228,6 +230,7 @@ describe('Midnight ContractService & Solo/Team Tournament System', () => {
       location: defaultLocation
     });
 
+    AuthService.selectRole("PLAYER");
     const team1 = ContractService.createTeam({
       tournamentId: tourney.id,
       captainWalletAddress: player1,
@@ -300,6 +303,7 @@ describe('Midnight ContractService & Solo/Team Tournament System', () => {
       location: defaultLocation
     });
 
+    AuthService.selectRole("PLAYER");
     const team = ContractService.createTeam({
       tournamentId: tourney.id,
       captainWalletAddress: player1,
@@ -383,7 +387,7 @@ describe('Midnight ContractService & Solo/Team Tournament System', () => {
 
   it('should enforce strict deletion rules: only COMPLETED tournaments can be deleted by their creator organizer', () => {
     const otherOrganizer = 'addr_test1midnight_organizer_beta';
-    AuthService.registerOrganizer(otherOrganizer, 'Beta Organizer', 'Midnight Guild');
+    AuthService.selectRole("ORGANIZER");
 
     // 1. Active tournament (registration open) cannot be deleted
     const activeTourney = ContractService.createTournament({

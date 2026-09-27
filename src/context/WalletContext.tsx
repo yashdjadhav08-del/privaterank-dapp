@@ -1,26 +1,29 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react';
 import { WalletAuthState } from '../wallet/types';
 import { OneAmConnector } from '../wallet/oneAmConnector';
 import { AuthService } from '../wallet/authService';
 import { ProfileService } from '../services/profileService';
-import { PlayerProfile, RankTier } from '../types';
+import { PlayerProfile } from '../types';
 import { NETWORK } from '../config/network';
-import { normalizeAddress, safeAddressCompare } from '../utils/crypto';
+import { normalizeAddress } from '../utils/crypto';
 
-export type UserRole = 'PLAYER' | 'ORGANIZER' | 'UNKNOWN';
+export type UserRole = 'PLAYER' | 'ORGANIZER';
 
 interface WalletContextType {
   authState: WalletAuthState;
   playerProfile: PlayerProfile | null;
+  /** Role chosen by the user for this session / wallet. Null = not yet selected. */
+  selectedRole: UserRole | null;
+  /** Active portal role. Defaults to PLAYER if nothing selected yet. */
   activeRole: 'PLAYER' | 'ORGANIZER';
-  userRole: UserRole;
-  isOrganizerAuthorized: boolean;
+  /** True when a connected wallet is not yet bound to a role and needs first-time setup */
+  isRoleSelectionRequired: boolean;
+  selectRole: (role: UserRole) => void;
   connectWallet: () => Promise<void>;
   switchToPreprod: () => Promise<void>;
   signMessage: () => Promise<string | null>;
   disconnectWallet: () => void;
   updateProfile: (updated: Partial<PlayerProfile>) => void;
-  registerOrganizerWallet: (name?: string, organization?: string) => void;
   clearError: () => void;
 }
 
@@ -43,23 +46,29 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   });
 
   const [playerProfile, setPlayerProfile] = useState<PlayerProfile | null>(null);
-  const [, setAuthVersion] = useState(0);
 
-  // Strict role resolution based purely on connected 1AM wallet address
-  const isOrganizerAuthorized = AuthService.isOrganizerAuthorized(authState.unshieldedAddress);
-  const userRole: UserRole = authState.isConnected
-    ? (isOrganizerAuthorized ? 'ORGANIZER' : 'PLAYER')
-    : 'UNKNOWN';
+  // Role is permanent per wallet and cached in state
+  const [selectedRole, setSelectedRoleState] = useState<UserRole | null>(
+    () => AuthService.getSelectedRole()
+  );
+  const [isRoleSelectionRequired, setIsRoleSelectionRequired] = useState<boolean>(false);
 
-  // activeRole strictly matches the wallet's authentic role (no manual switching permitted)
-  const activeRole: 'PLAYER' | 'ORGANIZER' = isOrganizerAuthorized ? 'ORGANIZER' : 'PLAYER';
+  const activeRole: 'PLAYER' | 'ORGANIZER' = selectedRole ?? 'PLAYER';
 
-  const registerOrganizerWallet = (name = 'Tournament Organizer', organization = 'Midnight Community') => {
-    if (authState.unshieldedAddress) {
-      AuthService.registerOrganizer(authState.unshieldedAddress, name, organization);
-      setAuthVersion(v => v + 1);
+  const selectRole = useCallback((role: UserRole) => {
+    const targetWallet = authState.unshieldedAddress;
+    const bound = AuthService.bindRole(targetWallet, role);
+    AuthService.selectRole(bound, targetWallet);
+    setSelectedRoleState(bound);
+    setIsRoleSelectionRequired(false);
+
+    if (bound === 'PLAYER' && targetWallet) {
+      const loadedProfile = ProfileService.getProfile(targetWallet);
+      setPlayerProfile(loadedProfile);
+    } else {
+      setPlayerProfile(null);
     }
-  };
+  }, [authState.unshieldedAddress]);
 
   const clearError = () => {
     setAuthState(prev => ({ ...prev, error: null }));
@@ -68,15 +77,37 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   const connectWallet = async () => {
     setAuthState(prev => ({ ...prev, isConnecting: true, error: null, isWrongNetwork: false }));
 
+    const timeoutTimer = setTimeout(() => {
+      setAuthState(prev => {
+        if (prev.isConnecting) {
+          return {
+            ...prev,
+            isConnecting: false,
+            error: 'Connection timed out. Please click the 1AM Wallet icon in your browser toolbar to approve the connection request.'
+          };
+        }
+        return prev;
+      });
+    }, 18000);
+
     try {
-      // 1. Clean Connection to 1AM Wallet
       const { unshieldedAddress, shieldedAddress, dustBalance, detectedNetwork, isPreprod } =
         await OneAmConnector.connectRealWallet();
 
       const safeUnshielded = normalizeAddress(unshieldedAddress);
       const safeShielded = normalizeAddress(shieldedAddress);
 
-      // 2. Validate Network: PREPROD ONLY
+      // Check permanent wallet-to-role binding
+      const boundRole = safeUnshielded ? AuthService.getRoleForWallet(safeUnshielded) : null;
+      if (boundRole) {
+        setSelectedRoleState(boundRole);
+        AuthService.selectRole(boundRole, safeUnshielded);
+        setIsRoleSelectionRequired(false);
+      } else {
+        setSelectedRoleState(null);
+        setIsRoleSelectionRequired(true);
+      }
+
       if (!isPreprod) {
         setAuthState({
           isConnected: true,
@@ -95,7 +126,6 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         return;
       }
 
-      // 3. Mark wallet as connected
       setAuthState({
         isConnected: true,
         isConnecting: false,
@@ -111,15 +141,12 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         error: null
       });
 
-      // 4. Strict Role & Profile Resolution:
-      const isOrg = AuthService.isOrganizerAuthorized(safeUnshielded);
-      if (isOrg) {
-        // Organizers cannot load or have player profile
-        setPlayerProfile(null);
-      } else {
-        // Players load their gaming credentials & profile
+      // Load player profile only when not bound to ORGANIZER
+      if (boundRole !== 'ORGANIZER' && safeUnshielded) {
         const loadedProfile = ProfileService.getProfile(safeUnshielded);
         setPlayerProfile(loadedProfile);
+      } else {
+        setPlayerProfile(null);
       }
     } catch (err: unknown) {
       const errorMsg = err instanceof Error ? err.message : 'Wallet connection failed';
@@ -134,6 +161,8 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
         shieldedAddress: null,
         error: errorMsg
       }));
+    } finally {
+      clearTimeout(timeoutTimer);
     }
   };
 
@@ -144,11 +173,7 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       await connectWallet();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to switch network in wallet';
-      setAuthState(prev => ({
-        ...prev,
-        isConnecting: false,
-        error: msg
-      }));
+      setAuthState(prev => ({ ...prev, isConnecting: false, error: msg }));
     }
   };
 
@@ -157,12 +182,10 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       setAuthState(prev => ({ ...prev, error: 'Please switch your wallet to Midnight Preprod Testnet before signing.' }));
       return null;
     }
-
     if (!authState.unshieldedAddress) {
       setAuthState(prev => ({ ...prev, error: 'No wallet connected to sign' }));
       return null;
     }
-
     setAuthState(prev => ({ ...prev, isSigning: true, error: null }));
     try {
       const signature = await OneAmConnector.signChallenge(authState.unshieldedAddress);
@@ -176,6 +199,9 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const disconnectWallet = () => {
+    AuthService.clearRole();
+    setSelectedRoleState(null);
+    setIsRoleSelectionRequired(false);
     setAuthState({
       isConnected: false,
       isConnecting: false,
@@ -194,28 +220,18 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
   };
 
   const updateProfile = (updated: Partial<PlayerProfile>) => {
-    // Only players can update player profile
-    if (isOrganizerAuthorized) {
-      throw new Error('Access Restricted: Organizer wallets cannot modify player profiles.');
+    if (activeRole === 'ORGANIZER') {
+      throw new Error('Organizer wallets cannot modify player profiles.');
     }
-
     setPlayerProfile(prev => {
       const base = prev || (authState.unshieldedAddress ? ProfileService.getProfile(authState.unshieldedAddress) : null);
       if (!base) return null;
-
       const merged: PlayerProfile = {
         ...base,
         ...updated,
-        personalInfo: {
-          ...base.personalInfo,
-          ...(updated.personalInfo || {})
-        },
-        gamingCredentials: {
-          ...base.gamingCredentials,
-          ...(updated.gamingCredentials || {})
-        }
+        personalInfo: { ...base.personalInfo, ...(updated.personalInfo || {}) },
+        gamingCredentials: { ...base.gamingCredentials, ...(updated.gamingCredentials || {}) }
       };
-
       ProfileService.saveProfile(merged);
       return merged;
     });
@@ -226,15 +242,15 @@ export const WalletProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       value={{
         authState,
         playerProfile,
+        selectedRole,
         activeRole,
-        userRole,
-        isOrganizerAuthorized,
+        isRoleSelectionRequired,
+        selectRole,
         connectWallet,
         switchToPreprod,
         signMessage,
         disconnectWallet,
         updateProfile,
-        registerOrganizerWallet,
         clearError
       }}
     >

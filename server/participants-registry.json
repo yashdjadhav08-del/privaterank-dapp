@@ -1,0 +1,28 @@
+{
+  "t-1790505288382-yfz7r": {
+    "mn_addr_preprod1lsvhkn2j5hu54pkaseqnqdw3n0nm2ad26lzpnxlwj0j228fnn8nsyhm9j8": {
+      "joinedAt": "2026-09-27T11:58:38.739Z",
+      "txHash": "fd6c486a5ec64b9e89144ad93a8a28ddb3f743d6182d0fc5b5ebe46e28cc25b9",
+      "blockHeight": 2628738,
+      "anonymousId": "PR-_ADD",
+      "tournamentType": "SOLO",
+      "teamId": null
+    },
+    "mn_addr_preprod12aj8h8j93wmwtwpgak4a76vxwtmfmp3vkm2hjaf2k6pxugkz7j9q6y04m5": {
+      "joinedAt": "2026-09-27T12:07:16.765Z",
+      "txHash": "0d5c2cd4ece7243fe39fc2bc3851e737255185749c042d55dc542c08ac0debad",
+      "blockHeight": 2732188,
+      "anonymousId": "PR-_ADD",
+      "tournamentType": "SOLO",
+      "teamId": null
+    },
+    "mn_addr_preprod1qtyh02ptsj9ak6yjua9fslym35lr7jfsjc9p4p23vfsywyr8mgusr4xx83": {
+      "joinedAt": "2026-09-27T12:57:51.156Z",
+      "txHash": "a0af6a7a2dc1e293ecb6aad920a4bf2e58c3a6371d018085cc4c5d89d7121968",
+      "blockHeight": 2700392,
+      "anonymousId": "PR-_ADD",
+      "tournamentType": "SOLO",
+      "teamId": null
+    }
+  }
+}

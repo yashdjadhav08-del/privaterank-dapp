@@ -22,25 +22,52 @@ export function normalizeAddress(rawAddress: unknown): string {
   }
 
   if (Array.isArray(rawAddress)) {
-    if (rawAddress.length === 0) return '';
-    return normalizeAddress(rawAddress[0]);
+    for (const item of rawAddress) {
+      const normalized = normalizeAddress(item);
+      if (normalized) return normalized;
+    }
+    return '';
   }
 
   if (typeof rawAddress === 'object') {
     const obj = rawAddress as Record<string, unknown>;
-    if (typeof obj.address === 'string') return obj.address.trim();
-    if (typeof obj.unshieldedAddress === 'string') return obj.unshieldedAddress.trim();
-    if (typeof obj.shieldedAddress === 'string') return obj.shieldedAddress.trim();
-    if (typeof obj.bech32 === 'string') return obj.bech32.trim();
-    if (typeof obj.hex === 'string') return obj.hex.trim();
-    if (typeof obj.value === 'string') return obj.value.trim();
+
+    // Check candidate address property names in order
+    const candidateKeys = [
+      'unshieldedAddress',
+      'shieldedAddress',
+      'address',
+      'dustAddress',
+      'bech32',
+      'hex',
+      'value'
+    ];
+
+    for (const key of candidateKeys) {
+      const val = obj[key];
+      if (typeof val === 'string' && val.trim().length > 0) {
+        return val.trim();
+      }
+    }
+
+    // Check nested address arrays
+    if (Array.isArray(obj.addresses) && obj.addresses.length > 0) {
+      const nested = normalizeAddress(obj.addresses);
+      if (nested) return nested;
+    }
+
+    if (Array.isArray(obj.shieldedAddresses) && obj.shieldedAddresses.length > 0) {
+      const nested = normalizeAddress(obj.shieldedAddresses);
+      if (nested) return nested;
+    }
+
     if (typeof obj.toString === 'function') {
       const str = obj.toString();
       if (str && str !== '[object Object]') return str.trim();
     }
   }
 
-  return String(rawAddress).trim();
+  return '';
 }
 
 /**
@@ -86,4 +113,36 @@ export function shortenAddress(address: unknown, chars = 6): string {
 export function formatDust(dust: bigint | string | number | unknown): string {
   const value = typeof dust === 'bigint' ? Number(dust) : Number(dust || 0);
   return (value / 1_000_000).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 4 }) + ' DUST';
+}
+
+/**
+ * Format tournament prize pool in INR Rupees (₹).
+ * Tournament prize pool is an application-level reward in Rupees (INR).
+ * Midnight DUST is strictly reserved for blockchain transaction/gas fees.
+ */
+export function formatPrizePool(prize?: string | number | null): string {
+  if (!prize) return '₹0';
+  let str = String(prize).trim();
+
+  // If already starts with ₹, return as is
+  if (str.startsWith('₹')) return str;
+
+  // Clean legacy test labels
+  str = str.replace(/\s*(?:t?DUST|tokens?)\s*$/i, '').trim();
+  str = str.replace(/\s*INR\s*$/i, '').trim();
+
+  if (!str) return '₹0';
+
+  // If pure number or formatted number (e.g. "5000" or "5,000")
+  if (/^[\d,]+$/.test(str)) {
+    return `₹${str}`;
+  }
+
+  // If it contains a number prefix
+  const match = str.match(/^([\d,]+)(.*)$/);
+  if (match) {
+    return `₹${match[1]}${match[2]}`;
+  }
+
+  return `₹${str}`;
 }

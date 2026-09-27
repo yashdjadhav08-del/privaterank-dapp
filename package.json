@@ -4,17 +4,37 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
+    "postinstall": "node scripts/patch-runtime.js",
     "dev": "vite",
+    "dev:frontend": "vite",
+    "server": "node --loader ts-node/esm server/index.ts",
+    "server:node": "node server/index.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "tsc --noEmit",
     "build": "tsc && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:frontend": "vitest run tests/frontend.test.tsx tests/auth.test.ts tests/profile.test.tsx tests/zkProver.test.ts tests/accessControl.test.tsx",
+    "test:contract": "vitest run tests/contract.test.ts tests/network.test.ts tests/transaction.test.ts",
+    "test:watch": "vitest",
+    "contract:compile": "docker run --rm -v \"$PWD/contracts:/contracts\" midnight-compactc:0.31.1 /contracts/privaterank.compact /contracts/managed/privaterank",
+    "contract:check": "node node_modules/typescript/bin/tsc --noEmit contracts/managed/privaterank/contract/index.d.ts",
+    "contract:deploy:preprod": "node scripts/deploy-preprod.js"
   },
   "dependencies": {
+    "@midnight-ntwrk/compact-runtime": "0.16.0",
+    "@midnight-ntwrk/dapp-connector-api": "^4.0.1",
+    "@midnight-ntwrk/midnight-js-contracts": "^4.1.1",
+    "@midnight-ntwrk/midnight-js-network-id": "^4.1.1",
+    "@midnight-ntwrk/midnight-js-types": "^4.1.1",
+    "buffer": "^6.0.3",
     "clsx": "^2.1.1",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
     "lucide-react": "^1.16.0",
     "react": "^19.0.0",
-    "react-dom": "^19.0.0"
+    "react-dom": "^19.0.0",
+    "vite-plugin-wasm": "^3.6.0"
   },
   "devDependencies": {
     "@testing-library/jest-dom": "^6.6.3",
@@ -24,8 +44,13 @@
     "@types/react-dom": "^19.0.4",
     "@vitejs/plugin-react": "^4.3.4",
     "jsdom": "^26.0.0",
+    "rollup": "^4.63.5",
     "typescript": "^5.7.3",
     "vite": "^6.2.0",
     "vitest": "^3.0.7"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-linux-x64-gnu": "^4.63.5",
+    "@rollup/rollup-win32-x64-msvc": "^4.63.5"
   }
 }

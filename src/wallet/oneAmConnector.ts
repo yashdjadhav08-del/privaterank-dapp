@@ -1,5 +1,5 @@
-import { MidnightNetwork, MidnightConnectedAPI, SignDataPayload, SignDataResult } from './types';
-import { generateChallenge, normalizeAddress } from '../utils/crypto';
+import { MidnightNetwork, MidnightConnectedAPI, SignDataPayload, SignDataResult, OneAmWalletProvider } from './types';
+import { generateChallenge, normalizeAddress, safeAddressCompare } from '../utils/crypto';
 import { NETWORK, isPreprodNetwork } from '../config/network';
 
 export interface ConnectWalletResult {
@@ -22,104 +22,177 @@ function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T
 export class OneAmConnector {
   private static connectedApi: MidnightConnectedAPI | null = null;
 
+  public static getOneAmProvider(): OneAmWalletProvider | null {
+    if (typeof window === 'undefined') return null;
+    const midnight = (window as unknown as { midnight?: Record<string, unknown> }).midnight;
+    if (!midnight) return null;
+    if (midnight['1am']) return midnight['1am'] as OneAmWalletProvider;
+    if (midnight['oneam']) return midnight['oneam'] as OneAmWalletProvider;
+    // Check if any key under midnight exposes a connect method
+    for (const val of Object.values(midnight)) {
+      if (val && typeof val === 'object' && typeof (val as Record<string, unknown>).connect === 'function') {
+        return val as OneAmWalletProvider;
+      }
+    }
+    return null;
+  }
+
   public static isOneAmInstalled(): boolean {
-    if (typeof window === 'undefined') return false;
-    return !!(window.midnight && window.midnight['1am']);
+    return !!this.getOneAmProvider();
   }
 
   public static async connectRealWallet(): Promise<ConnectWalletResult> {
-    if (!this.isOneAmInstalled()) {
-      throw new Error('1AM Wallet extension is not installed. Please install 1AM Wallet from the Chrome Web Store to connect.');
+    const provider = this.getOneAmProvider();
+    if (!provider) {
+      throw new Error('1AM Wallet extension is not detected. Please ensure 1AM Wallet is installed and enabled in your browser extensions.');
     }
 
-    const provider = window.midnight!['1am']!;
-    
-    // 1. Connect to 1AM Wallet provider for Midnight Preprod
-    const api = await provider.connect(NETWORK);
-    this.connectedApi = api;
-
-    // 2. Fetch network, addresses, and balances in parallel with fast timeouts
-    const [networkResult, unshieldedResult, shieldedResult, dustResult] = await Promise.allSettled([
-      // Network detection
-      (async () => {
-        if (typeof api.getNetwork === 'function') {
-          return await api.getNetwork();
+    // 1. Connect to 1AM Wallet provider with 15s timeout
+    let api: MidnightConnectedAPI | null = this.connectedApi;
+    if (!api) {
+      const connectPromise = (async () => {
+        try {
+          return await provider.connect(NETWORK);
+        } catch {
+          // If connect(network) fails or rejects argument, try connect()
+          return await (provider as unknown as { connect: () => Promise<MidnightConnectedAPI> }).connect();
         }
-        if (typeof provider.getNetwork === 'function') {
-          return await provider.getNetwork();
-        }
-        return 'preprod';
-      })(),
+      })();
 
-      // Unshielded address
-      withTimeout(
-        (async () => {
-          if (typeof api.getUnshieldedAddress === 'function') {
-            const raw = await api.getUnshieldedAddress();
-            return normalizeAddress(raw);
-          }
-          return '';
-        })(),
-        3000,
-        ''
-      ),
-
-      // Shielded addresses
-      withTimeout(
-        (async () => {
-          if (typeof api.getShieldedAddresses === 'function') {
-            const list = await api.getShieldedAddresses();
-            if (Array.isArray(list) && list.length > 0) {
-              return normalizeAddress(list[0]);
-            }
-          }
-          return '';
-        })(),
-        3000,
-        ''
-      ),
-
-      // Dust balance
-      withTimeout(
-        (async () => {
-          if (typeof api.getDustBalance === 'function') {
-            const bal = await api.getDustBalance();
-            return bal ? bal.toString() : '0';
-          }
-          return '0';
-        })(),
-        2500,
-        '0'
-      )
-    ]);
-
-    const rawDetectedNetwork = networkResult.status === 'fulfilled' ? networkResult.value : 'preprod';
-    const detectedNetwork = typeof rawDetectedNetwork === 'string' ? rawDetectedNetwork : 'preprod';
-    const isPreprod = isPreprodNetwork(detectedNetwork);
-
-    let unshieldedAddress = unshieldedResult.status === 'fulfilled' ? unshieldedResult.value : '';
-    const shieldedAddress = shieldedResult.status === 'fulfilled' ? shieldedResult.value : '';
-    const dustBalance = dustResult.status === 'fulfilled' ? dustResult.value : '0';
-
-    // If unshielded address is empty (e.g. shielded-only account), use shielded address as identifier
-    if (!unshieldedAddress && shieldedAddress) {
-      unshieldedAddress = shieldedAddress;
+      api = await Promise.race([
+        connectPromise,
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error('Connection timed out. Please check your browser toolbar and click the 1AM Wallet extension icon to approve the connection.')),
+            15000
+          )
+        )
+      ]);
     }
 
-    if (!unshieldedAddress) {
+    if (!api) {
+      throw new Error('1AM Wallet connection failed to initialize API.');
+    }
+    const nonNullApi: MidnightConnectedAPI = api;
+    this.connectedApi = nonNullApi;
+
+    // 2. Fetch network, addresses, and balances cleanly without leaving abandoned streams
+    let detectedNetwork = 'preprod';
+    try {
+      if (typeof nonNullApi.getNetwork === 'function') {
+        detectedNetwork = (await nonNullApi.getNetwork()) || 'preprod';
+      } else if (typeof provider.getNetwork === 'function') {
+        detectedNetwork = (await provider.getNetwork()) || 'preprod';
+      }
+    } catch {
+      detectedNetwork = 'preprod';
+    }
+
+    let unshieldedAddress = '';
+    try {
+      if (typeof nonNullApi.getUnshieldedAddress === 'function') {
+        const raw = await nonNullApi.getUnshieldedAddress();
+        console.log('[1AM Connector] getUnshieldedAddress raw:', raw);
+        unshieldedAddress = normalizeAddress(raw);
+      }
+    } catch (err) {
+      console.warn('[1AM Connector] getUnshieldedAddress warning:', err);
+    }
+
+    let shieldedAddress = '';
+    try {
+      if (typeof nonNullApi.getShieldedAddresses === 'function') {
+        const raw = await nonNullApi.getShieldedAddresses();
+        console.log('[1AM Connector] getShieldedAddresses raw:', raw);
+        shieldedAddress = normalizeAddress(raw);
+      }
+    } catch (err) {
+      console.warn('[1AM Connector] getShieldedAddresses warning:', err);
+    }
+
+    // Check fallback address methods on DApp connector or provider
+    if (!unshieldedAddress && !shieldedAddress) {
       try {
-        if (typeof api.getUnshieldedAddress === 'function') {
-          const direct = await api.getUnshieldedAddress();
-          unshieldedAddress = normalizeAddress(direct);
+        if (typeof (nonNullApi as { getDustAddress?: () => Promise<unknown> }).getDustAddress === 'function') {
+          const dustRaw = await (nonNullApi as { getDustAddress: () => Promise<unknown> }).getDustAddress();
+          console.log('[1AM Connector] getDustAddress raw:', dustRaw);
+          const candidate = normalizeAddress(dustRaw);
+          if (candidate) {
+            unshieldedAddress = candidate;
+            shieldedAddress = candidate;
+          }
         }
       } catch {
-        // ignore
+        // dust address fallback
       }
     }
 
+    if (!unshieldedAddress && !shieldedAddress) {
+      const p = provider as unknown as Record<string, unknown>;
+      const provCandidate = normalizeAddress(
+        p.selectedAddress ||
+        p.address ||
+        (Array.isArray(p.accounts) ? p.accounts[0] : p.accounts)
+      );
+      if (provCandidate) {
+        console.log('[1AM Connector] provider property address:', provCandidate);
+        unshieldedAddress = provCandidate;
+        shieldedAddress = provCandidate;
+      }
+    }
+
+    // Cross-assign if one is missing
+    if (!unshieldedAddress && shieldedAddress) {
+      unshieldedAddress = shieldedAddress;
+    }
+    if (!shieldedAddress && unshieldedAddress) {
+      shieldedAddress = unshieldedAddress;
+    }
+
+    // STRICT VALIDATION: Under NO circumstances use placeholder '0xConnectedAccount'
+    if (!unshieldedAddress) {
+      throw new Error(
+        '1AM Wallet connection error: No active Midnight address returned by 1AM Wallet. Please ensure your 1AM Wallet is unlocked and on Midnight Preprod.'
+      );
+    }
+
+    let dustBalance = '0';
+    try {
+      if (typeof nonNullApi.getDustBalance === 'function') {
+        const bal = await nonNullApi.getDustBalance();
+        if (bal != null) {
+          if (typeof bal === 'object') {
+            const b = bal as { balance?: unknown; cap?: unknown };
+            if (b.balance !== undefined) {
+              dustBalance = String(b.balance);
+            } else if (b.cap !== undefined) {
+              dustBalance = String(b.cap);
+            } else {
+              dustBalance = String(bal);
+            }
+          } else {
+            dustBalance = String(bal);
+          }
+        }
+      }
+    } catch {
+      dustBalance = '0';
+    }
+
+    const isPreprod = isPreprodNetwork(detectedNetwork);
+
+    // Development diagnostic logging
+    console.log('[1AM Connector] Wallet Connection:', {
+      connectorConnected: true,
+      actualMidnightWalletAddress: unshieldedAddress,
+      shieldedAddress,
+      network: detectedNetwork,
+      isPreprod
+    });
+
     return {
-      api,
-      unshieldedAddress: unshieldedAddress || '0xConnectedAccount',
+      api: nonNullApi,
+      unshieldedAddress,
       shieldedAddress,
       dustBalance,
       detectedNetwork,
@@ -216,15 +289,67 @@ export class OneAmConnector {
     }
 
     try {
-      // ✅ CORRECT call per Midnight DApp Connector spec:
-      // api.signData(data: string, options: { encoding: string })
-      // Two separate arguments — NOT { data, options } as one object
-      const result = await activeApi.signData(dataStr, { encoding: encoding as 'text' | 'hex' | 'base64' });
+      let result: unknown;
+      const signOpts = {
+        encoding: encoding as 'text' | 'hex' | 'base64',
+        keyType: 'unshielded' as const
+      };
+
+      try {
+        // Try standard official Midnight DApp connector 2-argument call first:
+        // signData(data: string, options: { encoding: string, keyType: 'unshielded' })
+        result = await (activeApi as unknown as { signData: (d: string, o: unknown) => Promise<unknown> }).signData(
+          dataStr,
+          signOpts
+        );
+      } catch (err: unknown) {
+        const signErrStr = err instanceof Error ? err.message : String(err);
+
+        // Do not swallow user cancellations or rejections
+        if (
+          signErrStr.includes('rejected') ||
+          signErrStr.includes('User rejected') ||
+          signErrStr.includes('cancelled') ||
+          signErrStr.includes('declined') ||
+          signErrStr.includes('Cancelled')
+        ) {
+          throw err;
+        }
+
+        // Fallback 1: Try single payload object signature: signData({ data, options })
+        try {
+          result = await (activeApi as unknown as { signData: (p: unknown) => Promise<unknown> }).signData({
+            data: dataStr,
+            options: signOpts
+          });
+        } catch (fallback1Err: unknown) {
+          const fallback1ErrStr = fallback1Err instanceof Error ? fallback1Err.message : String(fallback1Err);
+          if (
+            fallback1ErrStr.includes('rejected') ||
+            fallback1ErrStr.includes('User rejected') ||
+            fallback1ErrStr.includes('cancelled') ||
+            fallback1ErrStr.includes('declined')
+          ) {
+            throw fallback1Err;
+          }
+
+          // Fallback 2: Try address as first argument: signData(address, { data, options })
+          try {
+            result = await (activeApi as unknown as { signData: (a: string, p: unknown) => Promise<unknown> }).signData(
+              normalizedAddr,
+              { data: dataStr, options: signOpts }
+            );
+          } catch {
+            // Throw original error with full context
+            throw err;
+          }
+        }
+      }
+
       const sig = extractSignature(result);
       if (sig) {
         return sig;
       }
-      // If wallet returned something but we couldn't extract it, use a deterministic fallback
       if (result) {
         return String(result);
       }
@@ -260,7 +385,8 @@ export class OneAmConnector {
       {
         data: challenge,
         options: {
-          encoding: 'text'
+          encoding: 'text',
+          keyType: 'unshielded'
         }
       },
       api

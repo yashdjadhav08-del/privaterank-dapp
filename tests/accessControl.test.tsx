@@ -1,230 +1,192 @@
 import React from 'react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, act } from '@testing-library/react';
 import { AuthService } from '../src/wallet/authService';
 import { ContractService } from '../src/contracts/contractService';
-import { ZkProverService } from '../src/contracts/zkProver';
-import { AccessDenied } from '../src/components/common/AccessDenied';
+import { DESIGNATED_ORGANIZER_WALLETS, getRoleForWallet, bindWalletRole } from '../src/config/organizers';
 import { WalletProvider, useWallet } from '../src/context/WalletContext';
-import { OneAmConnector } from '../src/wallet/oneAmConnector';
-import { RankTier } from '../src/types';
+import { TournamentSchedule, TournamentLocation, RankTier } from '../src/types';
 
-const PLAYER_WALLET = '0x71C8366420A092679b54538490758BDE353613AC';
-const ORGANIZER_WALLET_A = '0x892aF014bB5C3d49B4567890123456789abcdef0';
-const ORGANIZER_WALLET_B = '0x1A4b8E94c5C6d7E8F0123456789abcdef0123456';
+describe('PrivateRank Permanent Wallet-to-Role Binding & Access Control', () => {
+  const organizerWalletA = 'mn_addr_preprod1aaaa1111222233334444555566667777888899990000aaaa1111222233334444';
+  const playerWalletB = 'mn_addr_preprod1bbbb1111222233334444555566667777888899990000bbbb1111222233334444';
+  const designatedOrganizerWallet = 'mn_addr_preprod1c35njcpvrtjdpjlghvcfnj7wda6d7a672armpjkm98hfwfxc2qksqsvlst';
 
-describe('PrivateRank Strict Role Separation — Organizer vs Player', () => {
+  const defaultSchedule: TournamentSchedule = {
+    registrationStart: new Date().toISOString(),
+    registrationEnd: new Date(Date.now() + 86400000 * 5).toISOString(),
+    tournamentStart: new Date(Date.now() + 86400000 * 7).toISOString(),
+    tournamentEnd: new Date(Date.now() + 86400000 * 8).toISOString()
+  };
+
+  const defaultLocation: TournamentLocation = {
+    locationType: 'ONLINE',
+    onlinePlatform: 'Midnight Network Preprod'
+  };
+
   beforeEach(() => {
-    localStorage.clear();
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch {
+      // noop
+    }
+    AuthService.clearRole();
     vi.restoreAllMocks();
   });
 
-  it('TEST 1: Strict Role Detection & Authorization allowlist verification', () => {
-    // Normal player wallet
-    expect(AuthService.isOrganizerAuthorized(PLAYER_WALLET)).toBe(false);
-    expect(AuthService.isPlayer(PLAYER_WALLET)).toBe(true);
-    expect(AuthService.getUserRole(PLAYER_WALLET)).toBe('PLAYER');
-
-    // Default registered organizer wallet
-    expect(AuthService.isOrganizerAuthorized(ORGANIZER_WALLET_A)).toBe(true);
-    expect(AuthService.isPlayer(ORGANIZER_WALLET_A)).toBe(false);
-    expect(AuthService.getUserRole(ORGANIZER_WALLET_A)).toBe('ORGANIZER');
-
-    // Unknown/unconnected wallet
-    expect(AuthService.getUserRole(null)).toBe('UNKNOWN');
-    expect(AuthService.getUserRole(undefined)).toBe('UNKNOWN');
+  it('TEST 1: New wallet → role selection is required (unbound state)', () => {
+    const newWallet = 'mn_addr_preprod1newwallet_unbound_9999999999999999999999999999999999';
+    expect(AuthService.getRoleForWallet(newWallet)).toBeNull();
+    expect(AuthService.isWalletBound(newWallet)).toBe(false);
   });
 
-  it('TEST 2: Player wallet attempting organizer actions throws Access Denied', () => {
+  it('TEST 2: Select ORGANIZER → wallet permanently resolves to ORGANIZER', () => {
+    const bound = AuthService.bindRole(organizerWalletA, 'ORGANIZER');
+    expect(bound).toBe('ORGANIZER');
+    expect(AuthService.getRoleForWallet(organizerWalletA)).toBe('ORGANIZER');
+    expect(AuthService.isOrganizer(organizerWalletA)).toBe(true);
+    expect(AuthService.isPlayer(organizerWalletA)).toBe(false);
+    expect(AuthService.getActiveRole(organizerWalletA)).toBe('ORGANIZER');
+  });
+
+  it('TEST 3: Reconnect same wallet → automatically resolves to ORGANIZER', () => {
+    // 1. Initial bind
+    AuthService.bindRole(organizerWalletA, 'ORGANIZER');
+    // 2. Disconnect
+    AuthService.clearRole();
+    // 3. Reconnect & read role
+    expect(AuthService.getRoleForWallet(organizerWalletA)).toBe('ORGANIZER');
+    expect(AuthService.getActiveRole(organizerWalletA)).toBe('ORGANIZER');
+    expect(AuthService.isOrganizer(organizerWalletA)).toBe(true);
+  });
+
+  it('TEST 4: Same wallet cannot become PLAYER (role immutability)', () => {
+    // 1. Bind to ORGANIZER
+    AuthService.bindRole(organizerWalletA, 'ORGANIZER');
+    expect(AuthService.getRoleForWallet(organizerWalletA)).toBe('ORGANIZER');
+
+    // 2. Attempt to bind or switch to PLAYER
+    const secondBindResult = AuthService.bindRole(organizerWalletA, 'PLAYER');
+    expect(secondBindResult).toBe('ORGANIZER'); // Rejects overwrite, returns existing binding
+    expect(AuthService.getRoleForWallet(organizerWalletA)).toBe('ORGANIZER');
+    expect(AuthService.isOrganizer(organizerWalletA)).toBe(true);
+    expect(AuthService.isPlayer(organizerWalletA)).toBe(false);
+  });
+
+  it('TEST 5: New wallet can select PLAYER', () => {
+    const bound = AuthService.bindRole(playerWalletB, 'PLAYER');
+    expect(bound).toBe('PLAYER');
+    expect(AuthService.getRoleForWallet(playerWalletB)).toBe('PLAYER');
+    expect(AuthService.isPlayer(playerWalletB)).toBe(true);
+    expect(AuthService.isOrganizer(playerWalletB)).toBe(false);
+    expect(AuthService.getActiveRole(playerWalletB)).toBe('PLAYER');
+  });
+
+  it('TEST 6: Reconnect Player wallet → automatically resolves to PLAYER', () => {
+    AuthService.bindRole(playerWalletB, 'PLAYER');
+    AuthService.clearRole();
+
+    expect(AuthService.getRoleForWallet(playerWalletB)).toBe('PLAYER');
+    expect(AuthService.getActiveRole(playerWalletB)).toBe('PLAYER');
+    expect(AuthService.isPlayer(playerWalletB)).toBe(true);
+  });
+
+  it('TEST 7: Player wallet cannot become ORGANIZER (role immutability)', () => {
+    AuthService.bindRole(playerWalletB, 'PLAYER');
+    expect(AuthService.getRoleForWallet(playerWalletB)).toBe('PLAYER');
+
+    const secondBindResult = AuthService.bindRole(playerWalletB, 'ORGANIZER');
+    expect(secondBindResult).toBe('PLAYER'); // Rejects overwrite, returns existing binding
+    expect(AuthService.getRoleForWallet(playerWalletB)).toBe('PLAYER');
+    expect(AuthService.isPlayer(playerWalletB)).toBe(true);
+    expect(AuthService.isOrganizer(playerWalletB)).toBe(false);
+  });
+
+  it('TEST 8: Switching Wallet A → Wallet B preserves independent roles', () => {
+    AuthService.bindRole(organizerWalletA, 'ORGANIZER');
+    AuthService.bindRole(playerWalletB, 'PLAYER');
+
+    // Wallet A session
+    AuthService.selectRole('ORGANIZER', organizerWalletA);
+    expect(AuthService.getActiveRole(organizerWalletA)).toBe('ORGANIZER');
+
+    // Disconnect & Switch to Wallet B
+    AuthService.clearRole();
+    AuthService.selectRole('PLAYER', playerWalletB);
+    expect(AuthService.getActiveRole(playerWalletB)).toBe('PLAYER');
+    expect(AuthService.isPlayer(playerWalletB)).toBe(true);
+    expect(AuthService.isOrganizer(playerWalletB)).toBe(false);
+  });
+
+  it('TEST 9: Switching back to Wallet A restores ORGANIZER', () => {
+    AuthService.bindRole(organizerWalletA, 'ORGANIZER');
+    AuthService.bindRole(playerWalletB, 'PLAYER');
+
+    // Currently on Wallet B
+    AuthService.selectRole('PLAYER', playerWalletB);
+    expect(AuthService.getActiveRole(playerWalletB)).toBe('PLAYER');
+
+    // Switch back to Wallet A
+    AuthService.clearRole();
+    AuthService.selectRole('ORGANIZER', organizerWalletA);
+    expect(AuthService.getActiveRole(organizerWalletA)).toBe('ORGANIZER');
+    expect(AuthService.isOrganizer(organizerWalletA)).toBe(true);
+    expect(AuthService.isPlayer(organizerWalletA)).toBe(false);
+  });
+
+  it('TEST 10: Current designated wallet is permanently pre-seeded as ORGANIZER', () => {
+    expect(DESIGNATED_ORGANIZER_WALLETS).toContain(designatedOrganizerWallet);
+    expect(AuthService.getRoleForWallet(designatedOrganizerWallet)).toBe('ORGANIZER');
+    expect(AuthService.isOrganizer(designatedOrganizerWallet)).toBe(true);
+    expect(AuthService.isPlayer(designatedOrganizerWallet)).toBe(false);
+    expect(AuthService.getActiveRole(designatedOrganizerWallet)).toBe('ORGANIZER');
+
+    // Case-insensitivity verification
+    const upperCaseAddr = designatedOrganizerWallet.toUpperCase();
+    expect(AuthService.getRoleForWallet(upperCaseAddr)).toBe('ORGANIZER');
+    expect(AuthService.isOrganizer(upperCaseAddr)).toBe(true);
+  });
+
+  it('TEST 11: Organizer can access Create Tournament', () => {
+    AuthService.bindRole(organizerWalletA, 'ORGANIZER');
+    AuthService.selectRole('ORGANIZER', organizerWalletA);
+
+    const tourney = ContractService.createTournament({
+      name: 'Midnight Valorant Cup',
+      description: 'Championship for verified organizers',
+      gameTitle: 'Valorant',
+      organizerAddress: organizerWalletA,
+      organizerName: 'Alpha Org',
+      tournamentType: 'SOLO',
+      requirements: { minimumRank: RankTier.GOLD, minimumScore: 1000, minimumWins: 5 },
+      prizePool: '5,000 DUST',
+      schedule: defaultSchedule,
+      location: defaultLocation
+    });
+
+    expect(tourney).toBeDefined();
+    expect(tourney.name).toBe('Midnight Valorant Cup');
+    expect(tourney.organizerAddress).toBe(organizerWalletA);
+  });
+
+  it('TEST 12: Player cannot access Create Tournament', () => {
+    AuthService.bindRole(playerWalletB, 'PLAYER');
+    AuthService.selectRole('PLAYER', playerWalletB);
+
     expect(() => {
       ContractService.createTournament({
-        name: 'Unauthorized Championship',
-        description: 'Hacked tournament',
+        name: 'Illegal Tournament',
+        description: 'Should fail because caller is PLAYER',
         gameTitle: 'Valorant',
-        organizerAddress: PLAYER_WALLET,
-        organizerName: 'Player Trying to Hack',
-        requirements: {
-          minimumRank: RankTier.DIAMOND,
-          minimumScore: 2000,
-          minimumWins: 10
-        },
-        prizePool: '$10,000',
-        maxParticipants: 32,
-        applicationDeadline: new Date(Date.now() + 86400000).toISOString(),
-        startDate: new Date(Date.now() + 86400000 * 2).toISOString()
+        organizerAddress: playerWalletB,
+        organizerName: 'Player Trying to Organize',
+        tournamentType: 'SOLO',
+        requirements: { minimumRank: RankTier.GOLD, minimumScore: 1000, minimumWins: 5 },
+        prizePool: '1,000 DUST',
+        schedule: defaultSchedule,
+        location: defaultLocation
       });
-    }).toThrow(/Access Denied: Caller address is not an authorized organizer/i);
-  });
-
-  it('TEST 3: Organizer wallet attempting player actions is strictly rejected', async () => {
-    const tourney = ContractService.createTournament({
-      name: 'Midnight Pro League',
-      description: 'Official tournament',
-      gameTitle: 'Valorant',
-      organizerAddress: ORGANIZER_WALLET_A,
-      organizerName: 'Midnight Esports League',
-      tournamentType: 'TEAM',
-      teamSize: 4,
-      maxTeams: 16,
-      requirements: {
-        minimumRank: RankTier.GOLD,
-        minimumScore: 1000,
-        minimumWins: 5
-      },
-      prizePool: '5,000 DUST'
-    });
-
-    // 1. Organizer attempts to create a team as player -> Rejected
-    expect(() => {
-      ContractService.createTeam({
-        tournamentId: tourney.id,
-        captainWalletAddress: ORGANIZER_WALLET_A,
-        captainAnonymousId: 'PR-ORG1',
-        teamName: 'Organizer Team',
-        gamingCredentials: {
-          rank: RankTier.PLATINUM,
-          score: 1500,
-          wins: 10,
-          losses: 2,
-          achievements: [],
-          gameTitle: 'Valorant',
-          verifiedAt: new Date().toISOString()
-        }
-      });
-    }).toThrow(/Access Restricted: Organizer wallets are not permitted to participate as players or join teams/i);
-
-    // 2. Organizer attempts to join a team -> Rejected
-    expect(() => {
-      ContractService.joinTeam({
-        tournamentId: tourney.id,
-        teamId: 'team-dummy',
-        playerWalletAddress: ORGANIZER_WALLET_A,
-        anonymousPlayerId: 'PR-ORG1',
-        gamingCredentials: {
-          rank: RankTier.PLATINUM,
-          score: 1500,
-          wins: 10,
-          losses: 2,
-          achievements: [],
-          gameTitle: 'Valorant',
-          verifiedAt: new Date().toISOString()
-        }
-      });
-    }).toThrow(/Access Restricted: Organizer wallets are not permitted to participate as players or join teams/i);
-
-    // 3. Organizer attempts to generate player eligibility proof -> Rejected
-    await expect(
-      ZkProverService.generateEligibilityProof({
-        tournamentId: tourney.id,
-        requirements: tourney.requirements,
-        gamingCredentials: {
-          rank: RankTier.PLATINUM,
-          score: 1500,
-          wins: 10,
-          losses: 2,
-          achievements: [],
-          gameTitle: 'Valorant',
-          verifiedAt: new Date().toISOString()
-        },
-        personalInfo: {
-          fullName: 'Organizer Person',
-          email: 'org@example.com',
-          phone: '1234567890',
-          country: 'US',
-          dateOfBirth: '1990-01-01'
-        },
-        walletAddress: ORGANIZER_WALLET_A
-      })
-    ).rejects.toThrow(/Access Restricted: Organizer wallets cannot generate player eligibility proofs/i);
-  });
-
-  it('TEST 4: Authorized Organizer wallet creates and manages tournament successfully', () => {
-    const tournament = ContractService.createTournament({
-      name: 'Midnight Apex Legends Open',
-      description: 'Official tournament',
-      gameTitle: 'Apex Legends',
-      organizerAddress: ORGANIZER_WALLET_A,
-      organizerName: 'Midnight Esports League',
-      requirements: {
-        minimumRank: RankTier.PLATINUM,
-        minimumScore: 1500,
-        minimumWins: 5
-      },
-      prizePool: '$5,000',
-      maxParticipants: 64,
-      applicationDeadline: new Date(Date.now() + 86400000).toISOString(),
-      startDate: new Date(Date.now() + 86400000 * 2).toISOString()
-    });
-
-    expect(tournament).toBeDefined();
-    expect(tournament.organizerAddress).toBe(ORGANIZER_WALLET_A);
-    expect(tournament.status).toBe('OPEN');
-
-    // Organizer A can publish/close their tournament
-    const closed = ContractService.closeTournament(tournament.id, ORGANIZER_WALLET_A);
-    expect(closed.status).toBe('CLOSED');
-  });
-
-  it('TEST 5: Organizer B cannot close or manage Organizer A tournament (Ownership Invariant)', () => {
-    const tournament = ContractService.createTournament({
-      name: 'Organizer A League',
-      description: 'Owned by Organizer A',
-      gameTitle: 'Valorant',
-      organizerAddress: ORGANIZER_WALLET_A,
-      organizerName: 'Midnight Esports League',
-      requirements: {
-        minimumRank: RankTier.GOLD,
-        minimumScore: 1000,
-        minimumWins: 0
-      },
-      prizePool: '$2,500',
-      maxParticipants: 16,
-      applicationDeadline: new Date(Date.now() + 86400000).toISOString(),
-      startDate: new Date(Date.now() + 86400000 * 2).toISOString()
-    });
-
-    // Organizer B attempts to close Organizer A tournament -> Rejected
-    expect(() => {
-      ContractService.closeTournament(tournament.id, ORGANIZER_WALLET_B);
-    }).toThrow(/Unauthorized: Only tournament creator can close this tournament/i);
-  });
-
-  it('TEST 6: Wallet Switching from Organizer to Player updates role immediately', () => {
-    // 1. Organizer connected
-    expect(AuthService.isOrganizerAuthorized(ORGANIZER_WALLET_A)).toBe(true);
-    expect(AuthService.getUserRole(ORGANIZER_WALLET_A)).toBe('ORGANIZER');
-
-    // 2. User switches account to player in 1AM wallet
-    expect(AuthService.isOrganizerAuthorized(PLAYER_WALLET)).toBe(false);
-    expect(AuthService.getUserRole(PLAYER_WALLET)).toBe('PLAYER');
-  });
-
-  it('TEST 7: Dynamic registration and revocation of organizers', () => {
-    const dynamicAddress = '0x9999888877776666555544443333222211110000';
-    expect(AuthService.isOrganizerAuthorized(dynamicAddress)).toBe(false);
-
-    // Register
-    AuthService.registerOrganizer(dynamicAddress, 'New Esports Org', 'Tournament Series');
-    expect(AuthService.isOrganizerAuthorized(dynamicAddress)).toBe(true);
-    expect(AuthService.getUserRole(dynamicAddress)).toBe('ORGANIZER');
-
-    // Revoke
-    AuthService.revokeOrganizer(dynamicAddress);
-    expect(AuthService.isOrganizerAuthorized(dynamicAddress)).toBe(false);
-    expect(AuthService.getUserRole(dynamicAddress)).toBe('PLAYER');
-  });
-
-  it('TEST 8: AccessDenied component renders clear error message for unauthorized organizer access', () => {
-    const handleBack = vi.fn();
-    render(<AccessDenied connectedAddress={PLAYER_WALLET} onBackToUserPortal={handleBack} />);
-
-    expect(screen.getByText('ACCESS DENIED')).toBeInTheDocument();
-    expect(screen.getByText(/Organizer access is restricted to authorized wallets/i)).toBeInTheDocument();
-    expect(screen.getByText(PLAYER_WALLET)).toBeInTheDocument();
-    expect(screen.getByText(/This wallet does not have Organizer permissions/i)).toBeInTheDocument();
-
-    const returnBtn = screen.getByRole('button', { name: /Return to User Portal/i });
-    fireEvent.click(returnBtn);
-    expect(handleBack).toHaveBeenCalledTimes(1);
+    }).toThrow(/Access Denied/);
   });
 });

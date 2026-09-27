@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWallet } from '../context/WalletContext';
 import { useTournament } from '../context/TournamentContext';
 import { RankBadge } from '../components/common/RankBadge';
 import { StatusBadge } from '../components/common/StatusBadge';
 import { TransactionModal } from '../components/common/TransactionModal';
 import { Modal } from '../components/common/Modal';
-import { safeAddressCompare, shortenAddress } from '../utils/crypto';
+import { safeAddressCompare, shortenAddress, formatPrizePool } from '../utils/crypto';
+import { getVerifiedPrivateRankContract, PREPROD_CONFIG } from '../config/network';
 import { 
   ArrowLeft, 
   Gamepad2, 
@@ -32,7 +33,7 @@ interface GameDetailsPageProps {
 }
 
 export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, onNavigate }) => {
-  const { authState, playerProfile, connectWallet } = useWallet();
+  const { authState, playerProfile, activeRole, connectWallet } = useWallet();
   const { 
     tournaments, 
     applications, 
@@ -45,7 +46,8 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
     finalizeTeam,
     txProgress,
     txReceipt,
-    resetTxState 
+    resetTxState,
+    refreshData 
   } = useTournament();
 
   const [isProcessing, setIsProcessing] = useState(false);
@@ -60,7 +62,30 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
   const safeApplications = Array.isArray(applications) ? applications : [];
   const safeTeams = Array.isArray(teams) ? teams : [];
 
-  const tournament = safeTournaments.find(t => t && t.id === tournamentId) || (safeTournaments.length > 0 ? safeTournaments[0] : null);
+  const tournament = (tournamentId && safeTournaments.find(t => t && t.id === tournamentId)) || (safeTournaments.length > 0 ? safeTournaments[0] : null);
+
+  useEffect(() => {
+    if (tournament) {
+      console.log('[PrivateRank][PLAYER]\nRendering tournament:', {
+        id: tournament.id,
+        name: tournament.name,
+        description: tournament.description,
+        gameTitle: tournament.gameTitle,
+        category: tournament.category,
+        tournamentType: tournament.tournamentType,
+        teamSize: tournament.teamSize,
+        maxTeams: tournament.maxTeams,
+        maxParticipants: tournament.maxParticipants,
+        requirements: tournament.requirements,
+        prizePool: tournament.prizePool,
+        prizeDetails: tournament.prizeDetails,
+        schedule: tournament.schedule,
+        location: tournament.location,
+        status: tournament.status,
+        applicantCount: tournament.applicantCount
+      });
+    }
+  }, [tournament]);
 
   const isConnected = authState.isConnected && !!authState.unshieldedAddress;
 
@@ -117,6 +142,19 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
     setSuccessMessage(null);
 
     try {
+      // 0. Check verified PrivateRank contract deployment
+      const verifiedContract = await getVerifiedPrivateRankContract();
+      if (!verifiedContract || !verifiedContract.isDeployed) {
+        setErrorMessage(
+          'PrivateRank contract is not deployed on Midnight Preprod yet.\nPlease ask the organizer to create the tournament through the Organizer Dashboard first.'
+        );
+        return;
+      }
+
+      const activeContractAddress = verifiedContract.contractAddress || PREPROD_CONFIG.contractAddress;
+
+      console.log(`[JOIN DEBUG]\ncontractAddress = ${activeContractAddress}\ntournamentId from /api/tournaments = ${tournament.id}\ntournamentId from detail page = ${tournamentId || tournament.id}\ntournamentId passed to joinTournament = ${tournament.id}\nplayer wallet = ${authState.unshieldedAddress}\nnetwork = Preprod`);
+
       // 1. Generate Zero-Knowledge eligibility proof
       const proof = await generateProof({
         tournament,
@@ -135,8 +173,10 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
       });
 
       setSuccessMessage('Solo application submitted and confirmed on Midnight Preprod!');
+      await refreshData();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to join tournament';
+      console.error('[PrivateRank][JOIN] Technical error:', err);
       setErrorMessage(msg);
     } finally {
       setIsProcessing(false);
@@ -153,6 +193,20 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
     setSuccessMessage(null);
 
     try {
+      // Check verified PrivateRank contract deployment
+      const verifiedContract = await getVerifiedPrivateRankContract();
+      if (!verifiedContract || !verifiedContract.isDeployed) {
+        setErrorMessage(
+          'PrivateRank contract is not deployed on Midnight Preprod yet.\nPlease ask the organizer to create the tournament through the Organizer Dashboard first.'
+        );
+        return;
+      }
+
+      if (!tournament.txHash && !(tournament as any).onChainVerified) {
+        setErrorMessage('This tournament could not be found on Midnight Preprod.');
+        return;
+      }
+
       const proof = await generateProof({
         tournament,
         gamingCredentials: playerProfile.gamingCredentials,
@@ -197,6 +251,20 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
     setSuccessMessage(null);
 
     try {
+      // Check verified PrivateRank contract deployment
+      const verifiedContract = await getVerifiedPrivateRankContract();
+      if (!verifiedContract || !verifiedContract.isDeployed) {
+        setErrorMessage(
+          'PrivateRank contract is not deployed on Midnight Preprod yet.\nPlease ask the organizer to create the tournament through the Organizer Dashboard first.'
+        );
+        return;
+      }
+
+      if (!tournament.txHash && !(tournament as any).onChainVerified) {
+        setErrorMessage('This tournament could not be found on Midnight Preprod.');
+        return;
+      }
+
       const proof = await generateProof({
         tournament,
         gamingCredentials: playerProfile.gamingCredentials,
@@ -263,6 +331,29 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
       setIsProcessing(false);
     }
   };
+
+  if (!tournament) {
+    return (
+      <div style={{ maxWidth: '800px', margin: '60px auto', padding: '20px', textAlign: 'center' }}>
+        <div className="glass-panel" style={{ padding: '48px 24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px' }}>
+          <Trophy size={40} className="text-cyan-400 opacity-60" />
+          <h2 style={{ fontSize: '1.4rem', fontWeight: 800, color: '#f8fafc' }}>
+            No Active Tournaments Available Yet
+          </h2>
+          <p style={{ color: '#94a3b8', fontSize: '0.9rem', maxWidth: '420px' }}>
+            No tournament was found or no active tournaments are currently registered on Midnight Preprod.
+          </p>
+          <button
+            onClick={() => onNavigate('explore')}
+            className="btn-primary"
+            style={{ padding: '8px 20px', fontSize: '0.85rem' }}
+          >
+            Back to Explore
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '30px 20px', display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -343,7 +434,7 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
           ) : (
             <div>Players: <strong style={{ color: '#f8fafc' }}>{tournament.applicantCount || 0} / {tournament.maxParticipants}</strong></div>
           )}
-          <div>Prize: <strong style={{ color: '#fbbf24' }}>{tournament.prizePool}</strong></div>
+          <div>Prize Pool: <strong style={{ color: '#fbbf24' }}>{formatPrizePool(tournament.prizePool)}</strong></div>
         </div>
       </div>
 
@@ -354,8 +445,8 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
             <Calendar size={15} /> Tournament Schedule
           </div>
           <div style={{ fontSize: '0.8rem', color: '#cbd5e1', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-            <div>Registration: <strong>{tournament.schedule ? new Date(tournament.schedule.registrationStart).toLocaleDateString() : 'Now'}</strong> to <strong>{tournament.schedule ? new Date(tournament.schedule.registrationEnd).toLocaleDateString() : 'TBD'}</strong></div>
-            <div>Tournament: <strong>{tournament.schedule ? new Date(tournament.schedule.tournamentStart).toLocaleDateString() : 'TBD'}</strong></div>
+            <div>Registration: <strong>{tournament.schedule?.registrationStart ? new Date(tournament.schedule.registrationStart).toLocaleString() : 'Open'}</strong> to <strong>{tournament.schedule?.registrationEnd ? new Date(tournament.schedule.registrationEnd).toLocaleString() : 'TBD'}</strong></div>
+            <div>Tournament: <strong>{tournament.schedule?.tournamentStart ? new Date(tournament.schedule.tournamentStart).toLocaleString() : 'TBD'}</strong>{tournament.schedule?.tournamentEnd ? <> to <strong>{new Date(tournament.schedule.tournamentEnd).toLocaleString()}</strong></> : null}</div>
           </div>
         </div>
 
@@ -365,15 +456,24 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
           </div>
           <div style={{ fontSize: '0.8rem', color: '#cbd5e1' }}>
             {tournament.location?.locationType === 'ONLINE' && (
-              <div>Online • {tournament.location.onlinePlatform || 'Platform'} • Server: {tournament.location.serverRegion || 'Global'}</div>
+              <div>
+                <div>Platform: <strong>{tournament.location.onlinePlatform || 'Discord & BGMI Custom Room'}</strong></div>
+                {tournament.location.serverRegion && <div>Server / Region: <strong>{tournament.location.serverRegion}</strong></div>}
+              </div>
             )}
             {tournament.location?.locationType === 'OFFLINE' && (
-              <div>Offline • {tournament.location.venueName || 'Venue'}, {tournament.location.city}, {tournament.location.country}</div>
+              <div>
+                <div>Venue: <strong>{tournament.location.venueName || 'Venue'}</strong></div>
+                <div>{[tournament.location.address, tournament.location.city, tournament.location.state, tournament.location.country].filter(Boolean).join(', ')}</div>
+              </div>
             )}
             {tournament.location?.locationType === 'HYBRID' && (
-              <div>Hybrid • {tournament.location.onlinePlatform} / {tournament.location.venueName}, {tournament.location.city}</div>
+              <div>
+                <div>Online: <strong>{tournament.location.onlinePlatform || 'Online Platform'}</strong></div>
+                <div>Venue: <strong>{tournament.location.venueName || 'Venue'}, {tournament.location.city || ''}</strong></div>
+              </div>
             )}
-            {!tournament.location && <div>Online • Midnight Network Preprod</div>}
+            {!tournament.location && <div>Online • Discord & BGMI Custom Room</div>}
           </div>
         </div>
       </div>
@@ -458,18 +558,39 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', fontSize: '0.85rem' }}>
                   <span style={{ color: '#94a3b8' }}>Minimum Score:</span>
-                  <span style={{ color: '#00f2fe', fontWeight: 700 }}>≥ {tournament.requirements?.minimumScore || 0}</span>
+                  <span style={{ color: '#00f2fe', fontWeight: 700 }}>≥ {tournament.requirements?.minimumScore || 0} pts</span>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', fontSize: '0.85rem' }}>
+                  <span style={{ color: '#94a3b8' }}>Minimum Wins:</span>
+                  <span style={{ color: '#34d399', fontWeight: 700 }}>≥ {tournament.requirements?.minimumWins || 0} W</span>
                 </div>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'rgba(0,0,0,0.3)', borderRadius: '8px', fontSize: '0.85rem' }}>
                   <span style={{ color: '#94a3b8' }}>Prize Pool:</span>
-                  <span style={{ color: '#fbbf24', fontWeight: 800 }}>{tournament.prizePool || 'TBD'}</span>
+                  <span style={{ color: '#fbbf24', fontWeight: 800 }}>{formatPrizePool(tournament.prizePool)}</span>
+                </div>
+
+                {tournament.prizeDetails && (
+                  <div style={{ padding: '8px 12px', background: 'rgba(251, 191, 36, 0.08)', border: '1px solid rgba(251, 191, 36, 0.2)', borderRadius: '8px', fontSize: '0.8rem', color: '#fde68a' }}>
+                    <div style={{ fontWeight: 700, marginBottom: '2px', color: '#fbbf24' }}>Prize Breakdown:</div>
+                    <div>{tournament.prizeDetails}</div>
+                  </div>
+                )}
+
+                <div style={{ padding: '8px 12px', background: 'rgba(15, 23, 42, 0.6)', border: '1px solid rgba(255, 255, 255, 0.06)', borderRadius: '8px', fontSize: '0.75rem', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Shield size={13} style={{ color: '#38bdf8', flexShrink: 0 }} />
+                  <span>Transaction Fee: Paid in Midnight DUST when applicable</span>
                 </div>
               </div>
             </div>
 
             <div>
-              {existingApp ? (
+              {activeRole === 'ORGANIZER' ? (
+                <div style={{ padding: '12px', background: 'rgba(168, 85, 247, 0.12)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '8px', textAlign: 'center', color: '#c084fc', fontSize: '0.85rem' }}>
+                  <strong>Organizer Wallet</strong>: Organizers cannot participate or apply to tournaments.
+                </div>
+              ) : existingApp ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                   <div style={{ padding: '10px', background: 'rgba(16, 185, 129, 0.12)', borderRadius: '8px', textAlign: 'center', color: '#34d399', fontWeight: 700, fontSize: '0.9rem' }}>
                     ✓ You have joined this Solo tournament
@@ -504,6 +625,44 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
       {/* TEAM TOURNAMENT VIEW */}
       {isTeam && (
         <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          {/* Team Requirements & Prize Pool Banner */}
+          <div className="glass-panel" style={{ padding: '20px', display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+            <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px 14px', borderRadius: '8px' }}>
+              <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '4px' }}>ENTRY REQUIREMENT</div>
+              <RankBadge rank={tournament.requirements?.minimumRank || 1} size="sm" />
+            </div>
+
+            <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px 14px', borderRadius: '8px' }}>
+              <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '2px' }}>MINIMUM STATS</div>
+              <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#f8fafc' }}>
+                <span style={{ color: '#00f2fe' }}>≥ {tournament.requirements?.minimumScore || 0} pts</span>
+                <span style={{ color: '#64748b', margin: '0 6px' }}>•</span>
+                <span style={{ color: '#34d399' }}>≥ {tournament.requirements?.minimumWins || 0} W</span>
+              </div>
+            </div>
+
+            <div style={{ background: 'rgba(0,0,0,0.3)', padding: '12px 14px', borderRadius: '8px' }}>
+              <div style={{ fontSize: '0.75rem', color: '#94a3b8', marginBottom: '2px' }}>TOURNAMENT PRIZE POOL</div>
+              <div style={{ fontSize: '1.1rem', fontWeight: 800, color: '#fbbf24' }}>
+                {formatPrizePool(tournament.prizePool)}
+              </div>
+              {tournament.prizeDetails && (
+                <div style={{ fontSize: '0.75rem', color: '#fde68a', marginTop: '2px' }}>
+                  {tournament.prizeDetails}
+                </div>
+              )}
+            </div>
+
+            <div style={{ background: 'rgba(15, 23, 42, 0.6)', padding: '12px 14px', borderRadius: '8px', border: '1px solid rgba(255, 255, 255, 0.06)', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: '2px' }}>
+              <div style={{ fontSize: '0.72rem', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '4px', fontWeight: 600 }}>
+                <Shield size={12} /> Midnight Preprod
+              </div>
+              <div style={{ fontSize: '0.75rem', color: '#64748b' }}>
+                Gas & proof verification fees are paid separately in DUST
+              </div>
+            </div>
+          </div>
+
           {/* My Team Status (If already member of a team) */}
           {myTeam && (
             <section className="glass-panel" style={{ padding: '24px', borderLeft: myTeam.status === 'FINALIZED' ? '4px solid #10b981' : '4px solid #a855f7' }}>
@@ -650,14 +809,20 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
                 </p>
               </div>
 
-              <button
-                onClick={() => setShowCreateTeamModal(true)}
-                disabled={tournamentTeams.length >= tournament.maxTeams}
-                className="btn-purple"
-                style={{ padding: '8px 20px', fontSize: '0.85rem' }}
-              >
-                <PlusCircle size={15} /> Create Team (Become Captain)
-              </button>
+              {activeRole === 'ORGANIZER' ? (
+                <div style={{ padding: '6px 14px', background: 'rgba(168, 85, 247, 0.12)', border: '1px solid rgba(168, 85, 247, 0.3)', borderRadius: '6px', color: '#c084fc', fontSize: '0.8rem' }}>
+                  Organizer accounts cannot create or join teams.
+                </div>
+              ) : (
+                <button
+                  onClick={() => setShowCreateTeamModal(true)}
+                  disabled={tournamentTeams.length >= tournament.maxTeams}
+                  className="btn-purple"
+                  style={{ padding: '8px 20px', fontSize: '0.85rem' }}
+                >
+                  <PlusCircle size={15} /> Create Team (Become Captain)
+                </button>
+              )}
             </div>
           )}
 
@@ -679,7 +844,7 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
                   const isMyTeam = myTeam?.id === t.id;
                   const isFull = t.members.length >= t.teamSize;
                   const isFinalized = t.status === 'FINALIZED';
-                  const canJoin = !myTeam && !isFull && !isFinalized;
+                  const canJoin = activeRole !== 'ORGANIZER' && !myTeam && !isFull && !isFinalized;
 
                   return (
                     <div
@@ -789,8 +954,10 @@ export const GameDetailsPage: React.FC<GameDetailsPageProps> = ({ tournamentId, 
         progress={txProgress}
         receipt={txReceipt}
         onClose={resetTxState}
-        onRetry={resetTxState}
+        onRetry={handleJoinSolo}
+        onRefresh={refreshData}
       />
     </div>
   );
 };
+

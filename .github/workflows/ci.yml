@@ -1,30 +1,50 @@
-name: PrivateRank Midnight DApp CI/CD
+name: PrivateRank CI
 
 on:
   push:
-    branches: [ main, develop ]
+    branches: [ main, master, develop ]
   pull_request:
-    branches: [ main, develop ]
+    branches: [ main, master, develop ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
-  build-and-test:
+  ci-pipeline:
+    name: Continuous Integration Checks
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
+      - name: 1. Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20.x
+      - name: 2. Setup Node.js 20.x
         uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: 'npm'
 
-      - name: Install dependencies
+      - name: 3. Install dependencies (Clean Install)
         run: npm ci
 
-      - name: Run Unit & Contract Tests
-        run: npm test
+      - name: 4. TypeScript / Type Checking
+        run: npm run typecheck
 
-      - name: TypeScript & Production Build
+      - name: 5. Lint
+        run: npm run lint
+
+      - name: 6. Frontend & Application Logic Tests
+        run: npm run test:frontend
+
+      - name: 7. Smart Contract & On-Chain Lifecycle Tests
+        run: npm run test:contract
+
+      - name: 8. Smart Contract Bindings & Types Validation
+        run: npm run contract:check
+
+      - name: 9. Production Build
         run: npm run build
