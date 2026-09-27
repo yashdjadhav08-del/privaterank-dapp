@@ -79,7 +79,8 @@ PrivateRank supports **Midnight Preprod Testnet ONLY**. Other networks (Mainnet,
 | `VITE_PREPROD_RPC_URL` | Midnight Preprod RPC endpoint | `https://rpc.preprod.midnight.network` |
 | `VITE_PREPROD_INDEXER_URL` | Midnight Preprod Indexer GraphQL | `https://indexer.preprod.midnight.network/api/v1/graphql` |
 | `VITE_PREPROD_PROOF_SERVER_URL` | Midnight Proof Server URL | `http://127.0.0.1:6300` |
-| `VITE_PREPROD_CONTRACT_ADDRESS` | Preprod Smart Contract Address | `a4f5e2b8ab757f5e4d981415f74fffea3e42c50d7d0fb50e04bf47ac2faf7078` |
+| `VITE_PREPROD_CONTRACT_ADDRESS` | Preprod Smart Contract Address | `ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde` |
+| `VITE_SERVER_URL` | PrivateRank Backend API Server | `http://localhost:4000` |
 | `PORT` | Local host port mapped to container | `3000` |
 
 ---
@@ -126,18 +127,16 @@ npm run build
 
 ---
 
-## 6. Zero-Knowledge Circuit (`contracts/privaterank.compact`)
+## 6. Zero-Knowledge Circuits (`contracts/privaterank.compact`)
 
-The Midnight Compact contract specifies:
-- **Ledgers**: `authorizedOrganizers`, `tournaments`, `applications`, `proofCommitments`.
-- **Witnesses**: `getPlayerSecretSalt()`, `getPlayerRank()`, `getPlayerScore()`, `getPlayerWins()`, `getPlayerIdentityHash()`.
-- **Circuits**:
-  - `registerOrganizer(organizer: Address)`
-  - `createTournament(tournamentId, minRank, minScore, minWins, deadline)`
-  - `publishTournament(tournamentId)`
-  - `closeTournament(tournamentId)`
-  - `proveAndSubmitApplication(tournamentId, anonymousPlayerId)`
-  - `reviewApplication(appId, decision, reasonHash)`
+The Midnight Compact contract deployed on Midnight Preprod (`ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde`) defines:
+- **Ledger State**: `tournaments` map maintaining tournament configurations, minimum rank/score/wins criteria, organizer identities, and lifecycle status (DRAFT = 0, OPEN = 1, CLOSED = 2, COMPLETED = 3, ARCHIVED = 4).
+- **Witnesses**: Private player credentials and proof salt verified client-side via Midnight Proof Server.
+- **On-Chain Circuits**:
+  - `createTournament(tournamentId, organizer, minRank, minScore, minWins, deadline)`: Deploys a new tournament instance with entry criteria.
+  - `joinTournament(tournamentId, playerKey, proof)`: Zero-Knowledge eligibility verification and on-chain participation registration.
+  - `closeTournament(tournamentId, organizer)`: Closes active registrations and transitions tournament status to `CLOSED`.
+  - `archiveTournament(tournamentId, organizer)`: Archives a completed or closed tournament, removing it from active discovery while preserving on-chain history.
 
 ---
 
