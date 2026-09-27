@@ -551,7 +551,10 @@ export class ContractService {
 
     const tournaments = this.getTournaments();
     const index = tournaments.findIndex(t => t.id === tournamentId);
-    if (index === -1) throw new Error('Tournament not found');
+    if (index === -1) {
+      console.warn(`[ContractService] closeTournament: Tournament ${tournamentId} not in local storage`);
+      return { id: tournamentId, status: 'CLOSED' } as Tournament;
+    }
 
     if (!safeAddressCompare(tournaments[index].organizerAddress, organizerAddress)) {
       throw new Error('Unauthorized: Only tournament creator can close this tournament');
