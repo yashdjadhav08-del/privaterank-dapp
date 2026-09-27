@@ -19,7 +19,8 @@
     "test:watch": "vitest",
     "contract:compile": "docker run --rm -v \"$PWD/contracts:/contracts\" midnight-compactc:0.31.1 /contracts/privaterank.compact /contracts/managed/privaterank",
     "contract:check": "node node_modules/typescript/bin/tsc --noEmit contracts/managed/privaterank/contract/index.d.ts",
-    "contract:deploy:preprod": "node scripts/deploy-preprod.js"
+    "contract:deploy:preprod": "node scripts/deploy-preprod.js",
+    "healthcheck": "node scripts/healthcheck.js"
   },
   "dependencies": {
     "@midnight-ntwrk/compact-runtime": "0.16.0",
