@@ -85,7 +85,7 @@ describe('GameDetails Tournament Guardrails', () => {
     status: 'OPEN',
     applicantCount: 0,
     createdAt: '2026-10-01T00:00:00Z'
-  };
+  } as unknown as Tournament;
 
   const archivedTourney: Tournament = {
     ...openSoloTourney,

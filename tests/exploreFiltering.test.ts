@@ -32,7 +32,7 @@ function filterExploreTournaments(
 }
 
 describe('Explore Page Tournament Filtering', () => {
-  const mockTournaments: Tournament[] = [
+  const mockTournaments: Tournament[] = ([
     {
       id: 't-1',
       name: 'BGMI Pro Invitational',
@@ -123,7 +123,7 @@ describe('Explore Page Tournament Filtering', () => {
       applicantCount: 2,
       createdAt: '2026-09-01T00:00:00Z'
     }
-  ];
+  ] as unknown) as Tournament[];
 
   it('strictly excludes ARCHIVED tournaments from the result set', () => {
     const results = filterExploreTournaments(mockTournaments, '', 'All', 0);
