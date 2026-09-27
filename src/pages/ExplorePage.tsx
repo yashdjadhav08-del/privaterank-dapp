@@ -20,7 +20,12 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onNavigate }) => {
 
   const safeTournaments = Array.isArray(tournaments) ? tournaments : [];
 
-  const filteredTournaments = safeTournaments.filter(t => {
+  // Exclude archived and cancelled tournaments from active player explore listings
+  const activeTournaments = safeTournaments.filter(
+    t => t && t.status !== 'ARCHIVED' && t.status !== 'CANCELLED'
+  );
+
+  const filteredTournaments = activeTournaments.filter(t => {
     if (!t) return false;
     const name = t.name || '';
     const gameTitle = t.gameTitle || '';
@@ -129,8 +134,8 @@ export const ExplorePage: React.FC<ExplorePageProps> = ({ onNavigate }) => {
             No Active Tournaments Available Yet
           </h3>
           <p style={{ color: '#94a3b8', fontSize: '0.85rem', maxWidth: '420px' }}>
-            {safeTournaments.length === 0 
-              ? 'No tournaments have been registered on Midnight Preprod yet. Organizers can create tournaments via the Organizer Dashboard.'
+            {activeTournaments.length === 0 
+              ? 'No active tournaments have been registered on Midnight Preprod yet. Organizers can create tournaments via the Organizer Dashboard.'
               : 'No tournaments found matching your search filter.'}
           </p>
         </div>
