@@ -18,7 +18,7 @@ PrivateRank is a privacy-preserving gaming tournament platform built on the **Mi
 | 🌐 Network | Midnight Preprod | Testnet |
 | 👛 Wallet | 1AM Wallet | Required browser extension wallet |
 | 🎥 Demo Video | [Google Drive Demo](https://drive.google.com/file/d/1WYbwtTiXKXnegVbqsOzEVOzMJECtxSoA/view?usp=sharing) | Full platform & ZK verification walkthrough |
-| 🐦 X / Social Profile | Not provided — add your X / social profile here if available | Social profile link (optional) |
+| 🐦 X / Social Profile | [X Announcement Post](https://x.com/Yashjadhav38791/status/2104624216058564972) | Project announcement post on X |
 | 📋 Project Proposal | [`PROPOSAL.md`](PROPOSAL.md) | Level 4 project proposal & specification |
 | 📖 Usage Guide | [`docs/USAGE.md`](docs/USAGE.md) | Step-by-step player & organizer walkthrough |
 | ⚙️ CI Workflow | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | Continuous integration workflow |
@@ -397,7 +397,7 @@ PrivateRank/
 
 **Demo Video:** https://drive.google.com/file/d/1WYbwtTiXKXnegVbqsOzEVOzMJECtxSoA/view?usp=sharing
 
-**X / Social:** Not provided — add your X / social profile here if available
+**X / Social:** https://x.com/Yashjadhav38791/status/2104624216058564972
 
 **Contract Address:** ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde
 
