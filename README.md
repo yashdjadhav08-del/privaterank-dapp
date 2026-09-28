@@ -208,13 +208,7 @@ Confirmed
 ### Deployment & Contract Explorer
 
 - **1AM Preprod Contract Explorer:** [https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde](https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde)
-- **Deployment Transaction:** [https://explorer.1am.xyz/tx/eb364a16601821647689a2ec8bd727b57ee10269927fef5ec5725ce478b061e7?network=preprod](https://explorer.1am.xyz/tx/eb364a16601821647689a2ec8bd727b57ee10269927fef5ec5725ce478b061e7?network=preprod)
-
-**Contract Address:** `ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde`
-
-**Deployment Block:** #2,719,419
-
-**Deployment Date:** September 26, 2026, 08:19:48 PM
+- **Contract Address:** `ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde`
 
 ---
 
@@ -401,7 +395,7 @@ PrivateRank/
 
 **Contract Address:** ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde
 
-**Compact Smart Contract / Deployment Transaction:**  
+**Compact Smart Contract:**  
 https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde
 
 **Live Application:**  
