@@ -3,6 +3,45 @@
   "legacyContractAddress": "1e8798688fdd29985c4cee1ac35313f8cc320f8bb09f6eb97c65d2fd34bd422b",
   "tournaments": [
     {
+      "id": "t-1790563651842-h0mdz",
+      "name": "bro hub",
+      "description": "",
+      "gameTitle": "BGMI",
+      "category": "Battle Royale",
+      "gameImage": "https://images.unsplash.com/photo-1542751371-adc38448a05e?auto=format&fit=crop&w=800&q=80",
+      "organizerAddress": "mn_addr_preprod1c35njcpvrtjdpjlghvcfnj7wda6d7a672armpjkm98hfwfxc2qksqsvlst",
+      "organizerName": "Tournament Organizer",
+      "tournamentType": "SOLO",
+      "teamSize": 1,
+      "maxTeams": 0,
+      "maxParticipants": 64,
+      "requirements": {
+        "minimumRank": 5,
+        "minimumScore": 2000,
+        "minimumWins": 10
+      },
+      "prizePool": "₹10,000",
+      "schedule": {
+        "registrationStart": "2026-09-27T22:17:00.000Z",
+        "registrationEnd": "2026-10-02T21:17:00.000Z",
+        "tournamentStart": "2026-10-04T21:17:00.000Z",
+        "tournamentEnd": "2026-10-05T01:17:00.000Z"
+      },
+      "location": {
+        "locationType": "ONLINE",
+        "onlinePlatform": "Discord & BGMI Custom Room",
+        "serverRegion": "Asia (India)"
+      },
+      "rules": [],
+      "status": "OPEN",
+      "txHash": "b18f3518299023d88dacf8eae0a439b786ac9f68b2feff8caa1ce0be00883024",
+      "blockHeight": 2700426,
+      "applicantCount": 1,
+      "registeredAt": "2026-09-28T02:47:53.778Z",
+      "onChainVerified": false,
+      "onChainStatus": null
+    },
+    {
       "id": "t-1790505288382-yfz7r",
       "name": "gm pro",
       "description": "",
@@ -45,5 +84,5 @@
       "archivedAt": "2026-09-27T17:22:23.720Z"
     }
   ],
-  "lastUpdated": "2026-09-27T17:22:23.720Z"
+  "lastUpdated": "2026-09-28T02:51:48.823Z"
 }

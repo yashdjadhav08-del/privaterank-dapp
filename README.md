@@ -2,7 +2,34 @@
 
 > **"Prove your gaming eligibility. Keep your identity private."**
 
+[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fyashdjadhav08-del%2Fprivaterank-dapp)
+[![Vercel Deployment](https://img.shields.io/badge/Vercel-Live%20Deployment-black?style=flat&logo=vercel)](https://privaterank-dapp.vercel.app)
+[![Midnight Network](https://img.shields.io/badge/Midnight-Preprod%20Testnet-00ffcc?style=flat)](https://rpc.preprod.midnight.network)
+
+🌐 **Live Vercel Application**: [https://privaterank-dapp.vercel.app](https://privaterank-dapp.vercel.app)
+
 PrivateRank is a Web3 gaming tournament platform built strictly for the **Midnight Preprod Testnet** powered by **1AM Wallet** authentication. It separates public/shareable competitive credentials (Rank, Score, Wins, Losses) from private personal identity (Real Name, Email, Phone, Country, Date of Birth), enabling tournament organizers to verify eligibility using Zero-Knowledge proofs without exposing players' personal data.
+
+---
+
+## Live Vercel Deployment
+
+PrivateRank is pre-configured for instant zero-configuration deployment on [Vercel](https://vercel.com) using [`vercel.json`](file:///d:/level%204/vercel.json) with full Vite Single Page Application (SPA) rewrites and optimized WebAssembly (`.wasm`) MIME headers for the Midnight Ledger cryptographic library.
+
+- **Production Live URL**: [https://privaterank-dapp.vercel.app](https://privaterank-dapp.vercel.app)
+- **1-Click Import & Deploy**: [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fyashdjadhav08-del%2Fprivaterank-dapp)
+
+### Deploying via Vercel Dashboard:
+1. Go to [Vercel New Project](https://vercel.com/new).
+2. Import the Git repository `yashdjadhav08-del/privaterank-dapp`.
+3. The framework preset is automatically detected as **Vite** (Build Command: `npm run build`, Output Directory: `dist`).
+4. Set the environment variables from `.env.example` in Vercel Project Settings:
+   - `VITE_NETWORK` = `preprod`
+   - `VITE_PREPROD_RPC_URL` = `https://rpc.preprod.midnight.network`
+   - `VITE_PREPROD_INDEXER_URL` = `https://indexer.preprod.midnight.network/api/v1/graphql`
+   - `VITE_PREPROD_PROOF_SERVER_URL` = `http://127.0.0.1:6300`
+   - `VITE_PREPROD_CONTRACT_ADDRESS` = `ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde`
+5. Click **Deploy**.
 
 ---
 
@@ -208,4 +235,5 @@ Configure these repository secrets in GitHub (`Settings` → `Secrets and variab
 - [x] **Dockerized Production Setup**: Multi-stage `Dockerfile` and `docker-compose.yml`.
 - [x] **CI/CD Automation**: GitHub Actions CI (`ci.yml`) and manual Preprod CD (`deploy.yml`).
 - [x] **No Blank Screen**: Protected by React Error Boundaries.
+- [x] **Vercel Cloud Deployment**: Configured via `vercel.json` with SPA routing and WebAssembly MIME headers for Midnight Ledger SDK.
 

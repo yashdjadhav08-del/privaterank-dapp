@@ -24,5 +24,15 @@
       "tournamentType": "SOLO",
       "teamId": null
     }
+  },
+  "t-1790563651842-h0mdz": {
+    "mn_addr_preprod12aj8h8j93wmwtwpgak4a76vxwtmfmp3vkm2hjaf2k6pxugkz7j9q6y04m5": {
+      "joinedAt": "2026-09-28T02:51:48.823Z",
+      "txHash": "0d5c2cd4ece7243fe39fc2bc3851e737255185749c042d55dc542c08ac0debad",
+      "blockHeight": 2732188,
+      "anonymousId": "PR-_ADD",
+      "tournamentType": "SOLO",
+      "teamId": null
+    }
   }
 }
