@@ -13,7 +13,7 @@ PrivateRank is a privacy-preserving gaming tournament platform built on the **Mi
 |---|---|---|
 | 🚀 Live MVP | https://privaterank-dapp.vercel.app | Deployed on Vercel, Midnight Preprod |
 | 📦 GitHub Repository | https://github.com/yashdjadhav08-del/privaterank-dapp | PrivateRank source repository |
-| ⛓️ Compact Smart Contract | [1AM Preprod Contract Explorer](https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde) | Deployed Compact smart contract on Midnight Preprod |
+| ⛓️ Compact Smart Contract | [Midnight Preprod Explorer](https://explorer.preprod.midnight.network/) | Deployed Compact smart contract on Midnight Preprod |
 | 🌐 Midnight Preprod Contract | `ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde` | Preprod contract address |
 | 🌐 Network | Midnight Preprod | Testnet |
 | 👛 Wallet | 1AM Wallet | Required browser extension wallet |
@@ -207,7 +207,7 @@ Confirmed
 
 ### Deployment & Contract Explorer
 
-- **1AM Preprod Contract Explorer:** [https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde](https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde)
+- **Midnight Preprod Explorer:** [https://explorer.preprod.midnight.network/](https://explorer.preprod.midnight.network/)
 - **Contract Address:** `ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde`
 
 ---
@@ -396,7 +396,7 @@ PrivateRank/
 **Contract Address:** ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde
 
 **Compact Smart Contract:**  
-https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde
+https://explorer.preprod.midnight.network/
 
 **Live Application:**  
 https://privaterank-dapp.vercel.app
