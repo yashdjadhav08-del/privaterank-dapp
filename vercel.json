@@ -4,11 +4,39 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/api/health",
+      "destination": "/api/health.js"
+    },
+    {
+      "source": "/api/tournaments",
+      "destination": "/api/tournaments.js"
+    },
+    {
+      "source": "/api/contract",
+      "destination": "/api/contract.js"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/api",
+      "destination": "/api/index.js"
+    },
+    {
+      "source": "/((?!api/|api$).*)",
       "destination": "/index.html"
     }
   ],
   "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        { "key": "Access-Control-Allow-Origin", "value": "*" },
+        { "key": "Access-Control-Allow-Methods", "value": "GET,POST,OPTIONS,PUT,DELETE" },
+        { "key": "Access-Control-Allow-Headers", "value": "Content-Type, Authorization, Pragma, Cache-Control" }
+      ]
+    },
     {
       "source": "/(.*).wasm",
       "headers": [

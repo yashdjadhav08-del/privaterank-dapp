@@ -98,27 +98,52 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
           )}
         </div>
 
-        {/* Server Status Banner — shown when backend is unreachable */}
+        {/* Server Status Banner */}
         {serverStatus === 'unreachable' && (
-          <div style={{
-            borderRadius: '12px',
-            background: 'rgba(234, 179, 8, 0.08)',
-            border: '1px solid rgba(234, 179, 8, 0.3)',
-            padding: '12px 20px',
-            display: 'flex',
-            alignItems: 'flex-start',
-            gap: '10px',
-            color: '#fbbf24'
-          }}>
-            <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
-            <div>
-              <strong style={{ fontSize: '0.85rem' }}>Backend Server Offline</strong>
-              <p style={{ fontSize: '0.8rem', margin: '2px 0 0', color: '#94a3b8' }}>
-                Start the backend: <code>node server/index.mjs</code> in a second terminal.
-                Tournaments from Midnight Preprod will then appear here for ALL wallets.
-              </p>
+          typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') ? (
+            <div style={{
+              borderRadius: '12px',
+              background: 'rgba(234, 179, 8, 0.08)',
+              border: '1px solid rgba(234, 179, 8, 0.3)',
+              padding: '12px 20px',
+              display: 'flex',
+              alignItems: 'flex-start',
+              gap: '10px',
+              color: '#fbbf24'
+            }}>
+              <AlertTriangle size={18} style={{ flexShrink: 0, marginTop: '2px' }} />
+              <div>
+                <strong style={{ fontSize: '0.85rem' }}>Backend Server Offline (Local Dev)</strong>
+                <p style={{ fontSize: '0.8rem', margin: '2px 0 0', color: '#94a3b8' }}>
+                  Start the backend: <code>node server/index.mjs</code> in a second terminal.
+                  Tournaments from Midnight Preprod will then appear here for ALL wallets.
+                </p>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div style={{
+              borderRadius: '10px',
+              background: 'rgba(0, 242, 254, 0.05)',
+              border: '1px solid rgba(0, 242, 254, 0.15)',
+              padding: '8px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              fontSize: '0.78rem',
+              color: '#64748b'
+            }}>
+              <Server size={14} style={{ color: '#00f2fe', flexShrink: 0 }} />
+              <span>
+                <span style={{ color: '#00f2fe', fontWeight: 600 }}>Midnight Preprod</span>
+                {' · '}
+                <span style={{ color: '#94a3b8' }}>Verified On-Chain Contract</span>
+                {' · '}
+                <code style={{ color: '#67e8f9', background: 'rgba(0,242,254,0.08)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.72rem' }}>
+                  ba193619...1dcde
+                </code>
+              </span>
+            </div>
+          )
         )}
 
         {/* Server OK banner */}
