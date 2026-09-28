@@ -12,6 +12,31 @@ PrivateRank is a Web3 gaming tournament platform built strictly for the **Midnig
 
 ---
 
+## 🏆 Level 4 Submission Links
+
+| Deliverable | Details / Link |
+| :--- | :--- |
+| 🌐 **Live Web Application (Vercel)** | [https://privaterank-dapp.vercel.app](https://privaterank-dapp.vercel.app) |
+| ⛓️ **Compact Smart Contract** | [1AM Preprod Explorer](https://explorer.1am.xyz/tx/eb364a16601821647689a2ec8bd727b57ee10269927fef5ec5725ce478b061e7?network=preprod) |
+| 🎥 **Demo Video** | [Google Drive Demo](https://drive.google.com/file/d/1WYbwtTiXKXnegVbqsOzEVOzMJECtxSoA/view?usp=sharing) |
+| 🐦 **X / Social Profile** | Not provided — add your X / social profile here if available |
+| 💻 **Source Code Repository** | [https://github.com/yashdjadhav08-del/privaterank-dapp](https://github.com/yashdjadhav08-del/privaterank-dapp) |
+| 📄 **Project Proposal (Level 3)** | [PROPOSAL.md](PROPOSAL.md) |
+| 📖 **Platform Usage Guide** | [docs/USAGE.md](docs/USAGE.md) |
+
+---
+
+## 📝 Project Information
+
+- **Project**: PrivateRank — Privacy-Preserving Gaming Tournament Platform
+- **Track**: Midnight Builder Challenge — Level 4 (Gaming & Privacy)
+- **Target Network**: Midnight Preprod Testnet (1AM Wallet)
+- **GitHub**: [https://github.com/yashdjadhav08-del/privaterank-dapp](https://github.com/yashdjadhav08-del/privaterank-dapp)
+- **Deployment Transaction**: [https://explorer.1am.xyz/tx/eb364a16601821647689a2ec8bd727b57ee10269927fef5ec5725ce478b061e7?network=preprod](https://explorer.1am.xyz/tx/eb364a16601821647689a2ec8bd727b57ee10269927fef5ec5725ce478b061e7?network=preprod)
+- **Canonical Contract Address**: `ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde`
+
+---
+
 ## Live Vercel Deployment
 
 PrivateRank is pre-configured for instant zero-configuration deployment on [Vercel](https://vercel.com) using [`vercel.json`](file:///d:/level%204/vercel.json) with full Vite Single Page Application (SPA) rewrites and optimized WebAssembly (`.wasm`) MIME headers for the Midnight Ledger cryptographic library.
@@ -110,6 +135,14 @@ PrivateRank supports **Midnight Preprod Testnet ONLY**. Other networks (Mainnet,
 | `VITE_SERVER_URL` | PrivateRank Backend API Server | `http://localhost:4000` |
 | `PORT` | Local host port mapped to container | `3000` |
 
+### Midnight Preprod Configuration (`.env`)
+```bash
+INDEXER_URI=https://indexer.preprod.midnight.network/api/v4/graphql
+NODE_URI=https://rpc.preprod.midnight.network
+PROOF_SERVER_URI=http://127.0.0.1:6302
+CONTRACT_ADDRESS=ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde
+```
+
 ---
 
 ## 4. Wallet Network Validation
@@ -139,7 +172,9 @@ If you prefer running directly on your host machine:
 
 ### Steps
 ```bash
-# 1. Install dependencies
+# 1. Clone repository & install dependencies
+git clone https://github.com/yashdjadhav08-del/privaterank-dapp
+cd privaterank-dapp
 npm install
 
 # 2. Run unit & integration tests
