@@ -1,274 +1,416 @@
-# PrivateRank — Privacy-Preserving Gaming Tournament Platform on Midnight Network
+# 🎮 PrivateRank
+Privacy-Preserving Gaming Tournaments on Midnight
 
-> **"Prove your gaming eligibility. Keep your identity private."**
+> **Prove your eligibility. Protect your identity. Compete with confidence.**
 
-[![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fyashdjadhav08-del%2Fprivaterank-dapp)
-[![Vercel Deployment](https://img.shields.io/badge/Vercel-Live%20Deployment-black?style=flat&logo=vercel)](https://privaterank-dapp.vercel.app)
-[![Midnight Network](https://img.shields.io/badge/Midnight-Preprod%20Testnet-00ffcc?style=flat)](https://rpc.preprod.midnight.network)
-
-🌐 **Live Vercel Application**: [https://privaterank-dapp.vercel.app](https://privaterank-dapp.vercel.app)
-
-PrivateRank is a Web3 gaming tournament platform built strictly for the **Midnight Preprod Testnet** powered by **1AM Wallet** authentication. It separates public/shareable competitive credentials (Rank, Score, Wins, Losses) from private personal identity (Real Name, Email, Phone, Country, Date of Birth), enabling tournament organizers to verify eligibility using Zero-Knowledge proofs without exposing players' personal data.
+PrivateRank is a privacy-preserving gaming tournament platform built on the **Midnight Network**. Organizers can create tournaments and players can prove eligibility using privacy-preserving verification.
 
 ---
 
-## 🏆 Level 4 Submission Links
+## 🔗 Level 4 Submission Links
 
-| Deliverable | Details / Link |
-| :--- | :--- |
-| 🌐 **Live Web Application (Vercel)** | [https://privaterank-dapp.vercel.app](https://privaterank-dapp.vercel.app) |
-| ⛓️ **Compact Smart Contract** | [1AM Preprod Contract Explorer](https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde) |
-| 🎥 **Demo Video** | [Google Drive Demo](https://drive.google.com/file/d/1WYbwtTiXKXnegVbqsOzEVOzMJECtxSoA/view?usp=sharing) |
-| 🐦 **X / Social Profile** | Not provided — add your X / social profile here if available |
-| 💻 **Source Code Repository** | [https://github.com/yashdjadhav08-del/privaterank-dapp](https://github.com/yashdjadhav08-del/privaterank-dapp) |
-| 📄 **Project Proposal (Level 3)** | [PROPOSAL.md](PROPOSAL.md) |
-| 📖 **Platform Usage Guide** | [docs/USAGE.md](docs/USAGE.md) |
-
----
-
-## 📝 Project Information
-
-- **Project**: PrivateRank — Privacy-Preserving Gaming Tournament Platform
-- **Track**: Midnight Builder Challenge — Level 4 (Gaming & Privacy)
-- **Target Network**: Midnight Preprod Testnet (1AM Wallet)
-- **GitHub**: [https://github.com/yashdjadhav08-del/privaterank-dapp](https://github.com/yashdjadhav08-del/privaterank-dapp)
-- **Deployment Transaction**: [https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde](https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde)
-- **Canonical Contract Address**: `ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde`
+| Resource | Link / Identifier | Notes |
+|---|---|---|
+| 🚀 Live MVP | https://privaterank-dapp.vercel.app | Deployed on Vercel, Midnight Preprod |
+| 📦 GitHub Repository | https://github.com/yashdjadhav08-del/privaterank-dapp | PrivateRank source repository |
+| ⛓️ Compact Smart Contract | [1AM Preprod Contract Explorer](https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde) | Deployed Compact smart contract on Midnight Preprod |
+| 🌐 Midnight Preprod Contract | `ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde` | Preprod contract address |
+| 🌐 Network | Midnight Preprod | Testnet |
+| 👛 Wallet | 1AM Wallet | Required browser extension wallet |
+| 🎥 Demo Video | [Google Drive Demo](https://drive.google.com/file/d/1WYbwtTiXKXnegVbqsOzEVOzMJECtxSoA/view?usp=sharing) | Full platform & ZK verification walkthrough |
+| 🐦 X / Social Profile | Not provided — add your X / social profile here if available | Social profile link (optional) |
+| 📋 Project Proposal | [`PROPOSAL.md`](PROPOSAL.md) | Level 4 project proposal & specification |
+| 📖 Usage Guide | [`docs/USAGE.md`](docs/USAGE.md) | Step-by-step player & organizer walkthrough |
+| ⚙️ CI Workflow | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | Continuous integration workflow |
 
 ---
 
-## Live Vercel Deployment
+## ✨ What is PrivateRank?
 
-PrivateRank is pre-configured for instant zero-configuration deployment on [Vercel](https://vercel.com) using [`vercel.json`](file:///d:/level%204/vercel.json) with full Vite Single Page Application (SPA) rewrites and optimized WebAssembly (`.wasm`) MIME headers for the Midnight Ledger cryptographic library.
+PrivateRank is a decentralized tournament platform designed for competitive gaming.
 
-- **Production Live URL**: [https://privaterank-dapp.vercel.app](https://privaterank-dapp.vercel.app)
-- **1-Click Import & Deploy**: [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fyashdjadhav08-del%2Fprivaterank-dapp)
+Organizers can create **Solo and Team tournaments** with rules such as:
 
-### Deploying via Vercel Dashboard:
-1. Go to [Vercel New Project](https://vercel.com/new).
-2. Import the Git repository `yashdjadhav08-del/privaterank-dapp`.
-3. The framework preset is automatically detected as **Vite** (Build Command: `npm run build`, Output Directory: `dist`).
-4. Set the environment variables from `.env.example` in Vercel Project Settings:
-   - `VITE_NETWORK` = `preprod`
-   - `VITE_PREPROD_RPC_URL` = `https://rpc.preprod.midnight.network`
-   - `VITE_PREPROD_INDEXER_URL` = `https://indexer.preprod.midnight.network/api/v1/graphql`
-   - `VITE_PREPROD_PROOF_SERVER_URL` = `http://127.0.0.1:6300`
-   - `VITE_PREPROD_CONTRACT_ADDRESS` = `ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde`
-5. Click **Deploy**.
+- Minimum Rank
+- Minimum Score
+- Minimum Wins
+- Team Size
+- Maximum Teams
+- Registration Period
+- Tournament Schedule
+- Prize Pool
 
----
+Players can discover tournaments and prove that they satisfy the required conditions.
 
-## 1. Quick Start with Docker (Recommended)
-
-PrivateRank is fully Dockerized for production-grade reliability and reproducible deployment.
-
-### Prerequisites
-- [Docker](https://docs.docker.com/get-docker/) (Docker Desktop or Docker Engine >= 20.x)
-- [Docker Compose](https://docs.docker.com/compose/)
-- [1AM Wallet Browser Extension](https://chromewebstore.google.com/detail/1am-wallet) installed in your browser
-
-### 1. Configure Environment
-Copy the `.env.example` template:
-```bash
-cp .env.example .env
-```
-
-### 2. Build and Start the Application
-```bash
-docker compose up --build
-```
-
-### 3. Open in Browser
-Visit **[http://localhost:3000](http://localhost:3000)** in your browser.
-
-### 4. Stop the Container
-```bash
-docker compose down
-```
+> **Verify that a player qualifies without unnecessarily exposing who the player is.**
 
 ---
 
-## 2. Docker & Wallet Architecture
+## 🎯 The Problem
 
-Docker packages and serves the production frontend. The wallet connection and cryptographic signing are executed directly by the user's browser extension connecting to the **Midnight Preprod Testnet**.
+Competitive tournaments often require players to share gaming credentials and personal information to prove eligibility.
+
+This creates problems:
+
+1. **Unnecessary identity disclosure**
+2. **Centralized verification**
+3. **Public blockchain exposure**
+4. **All-or-nothing credential sharing**
+
+PrivateRank addresses these problems through privacy-preserving verification on Midnight.
+
+---
+
+## 💡 The Solution
+
+PrivateRank uses Midnight's privacy-preserving architecture and Compact smart contracts to separate **eligibility verification** from unnecessary personal disclosure.
+
+Example:
 
 ```text
-+-------------------------------------------------------------+
-|                     USER BROWSER                            |
-|                                                             |
-|   1. Opens http://localhost:3000                            |
-|      (Served from Docker Nginx container)                   |
-|                                                             |
-|   2. Interacts with 1AM Wallet Extension                    |
-|      (window.midnight['1am'])                               |
-|                                                             |
-|   3. Verifies Preprod Testnet Network                       |
-|                                                             |
-|   4. Signs Authentication Challenge via 1AM                 |
-|                                                             |
-|   5. Computes Zero-Knowledge Proofs Client-Side             |
-+-------------------------------------------------------------+
-                              |
-                              v
-+-------------------------------------------------------------+
-|                MIDNIGHT PREPROD TESTNET                     |
-|                                                             |
-|   - RPC: https://rpc.preprod.midnight.network               |
-|   - Indexer: https://indexer.preprod.midnight.network/graphql|
-|   - Smart Contract: contracts/privaterank.compact           |
-+-------------------------------------------------------------+
+Minimum Rank  = Platinum
+Minimum Score = 2000
+Minimum Wins  = 10
+```
+
+A player can prove that the requirements are satisfied without unnecessarily exposing unrelated personal information.
+
+---
+
+## 🏗️ Architecture
+
+```text
++------------------------------------------------------+
+|                    PLAYER / ORGANIZER                |
+|                                                      |
+|        React + TypeScript + Tailwind CSS             |
++--------------------------+---------------------------+
+                           |
+                           v
+                    +-------------+
+                    | 1AM Wallet  |
+                    +-------------+
+                           |
+                           v
+              +---------------------------+
+              | Midnight Compact Contract |
+              |                           |
+              | createTournament()        |
+              | joinTournament()          |
+              | closeTournament()         |
+              | archiveTournament()       |
+              +-------------+-------------+
+                            |
+                            v
+                  Midnight Preprod
+                            |
+                            v
+                  Preprod Indexer
+                            |
+                            v
+                 Verified Tournament State
 ```
 
 ---
 
-## 3. Environment Variables & Network Configuration
+## 🔐 Privacy Model
 
-PrivateRank supports **Midnight Preprod Testnet ONLY**. Other networks (Mainnet, Devnet, Ethereum, Polygon, Sepolia, etc.) are strictly excluded.
+### Private / Sensitive
 
-| Variable | Description | Default / Preprod Value |
-| :--- | :--- | :--- |
-| `VITE_NETWORK` | Target blockchain network (**PREPROD ONLY**) | `preprod` |
-| `VITE_PREPROD_RPC_URL` | Midnight Preprod RPC endpoint | `https://rpc.preprod.midnight.network` |
-| `VITE_PREPROD_INDEXER_URL` | Midnight Preprod Indexer GraphQL | `https://indexer.preprod.midnight.network/api/v1/graphql` |
-| `VITE_PREPROD_PROOF_SERVER_URL` | Midnight Proof Server URL | `http://127.0.0.1:6300` |
-| `VITE_PREPROD_CONTRACT_ADDRESS` | Preprod Smart Contract Address | `ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde` |
-| `VITE_SERVER_URL` | PrivateRank Backend API Server | `http://localhost:4000` |
-| `PORT` | Local host port mapped to container | `3000` |
+- Personal identity information
+- Private gaming credentials
+- Player commitments
+- Private verification inputs
 
-### Midnight Preprod Configuration (`.env`)
+### Public / Verifiable
+
+- Tournament configuration
+- Eligibility requirements
+- Tournament status
+- Participant state
+- Transaction identifiers
+- Block confirmation
+
+The goal is to expose the information required for tournament verification without unnecessarily exposing unrelated private information.
+
+---
+
+## 🏆 Core Features
+
+### 1. Tournament Creation
+
+Organizers can create Solo and Team tournaments with game details, eligibility rules, schedules, locations, team limits, and prize pools.
+
+### 2. Player Discovery
+
+Players can browse tournaments and view game, format, eligibility, schedule, location, team requirements, and prize pool.
+
+### 3. Privacy-Preserving Eligibility
+
+Players can prove conditions such as:
+
+```text
+Rank  >= Required Rank
+Score >= Required Score
+Wins  >= Required Wins
+```
+
+### 4. Real On-Chain Participation
+
+Player participation uses the real:
+
+```text
+joinTournament()
+```
+
+Compact circuit through 1AM Wallet and Midnight Preprod.
+
+### 5. Solo & Team Support
+
+Team tournaments can enforce team size, maximum teams, team capacity, duplicate participation prevention, and eligibility requirements.
+
+### 6. Tournament Lifecycle
+
+```text
+Create
+  ↓
+Open
+  ↓
+Close
+  ↓
+Archive
+```
+
+Archived tournaments remain on-chain but can be removed from active player listings.
+
+---
+
+## ⛓️ Real Blockchain Transactions
+
+PrivateRank is designed around real Midnight Preprod transactions.
+
+```text
+Prepare Transaction
+        ↓
+1AM Wallet Approval
+        ↓
+Broadcast
+        ↓
+Pending
+        ↓
+Block Inclusion
+        ↓
+Indexer Verification
+        ↓
+Confirmed
+```
+
+### Deployment & Contract Explorer
+
+- **1AM Preprod Contract Explorer:** [https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde](https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde)
+- **Deployment Transaction:** [https://explorer.1am.xyz/tx/eb364a16601821647689a2ec8bd727b57ee10269927fef5ec5725ce478b061e7?network=preprod](https://explorer.1am.xyz/tx/eb364a16601821647689a2ec8bd727b57ee10269927fef5ec5725ce478b061e7?network=preprod)
+
+**Contract Address:** `ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde`
+
+**Deployment Block:** #2,719,419
+
+**Deployment Date:** September 26, 2026, 08:19:48 PM
+
+---
+
+## 🛠️ Technology Stack
+
+| Layer | Technology |
+|---|---|
+| Blockchain | Midnight |
+| Smart Contracts | Compact |
+| Network | Midnight Preprod |
+| Wallet | 1AM Wallet |
+| Frontend | React.js + TypeScript |
+| Styling | Tailwind CSS |
+| Backend | Node.js |
+| Proof Infrastructure | Midnight Proof Server |
+| Blockchain Verification | Midnight Preprod Indexer |
+| Containerization | Docker |
+| Development | Git / GitHub |
+
+---
+
+## 👤 User Flow
+
+### Organizer
+
+```text
+Connect 1AM Wallet
+        ↓
+Select Organizer
+        ↓
+Organizer Dashboard
+        ↓
+Create Tournament
+        ↓
+1AM Wallet Approval
+        ↓
+Midnight Preprod
+        ↓
+Tournament Confirmed
+```
+
+### Player
+
+```text
+Connect 1AM Wallet
+        ↓
+Select Player
+        ↓
+Explore Tournaments
+        ↓
+View Eligibility
+        ↓
+Join Tournament
+        ↓
+Privacy-Preserving Verification
+        ↓
+1AM Wallet Approval
+        ↓
+Midnight Preprod
+        ↓
+Block + Indexer Verification
+        ↓
+Joined
+```
+
+---
+
+## 🧪 Development
+
+### Prerequisites
+
+- Node.js
+- npm
+- 1AM Wallet
+- Midnight Preprod access
+- Docker
+- Midnight Proof Server
+
+### Installation
+
 ```bash
+git clone https://github.com/yashdjadhav08-del/privaterank-dapp
+cd privaterank-dapp
+npm install
+```
+
+### Environment
+
+```env
+MIDNIGHT_NETWORK_ID=preprod
 INDEXER_URI=https://indexer.preprod.midnight.network/api/v4/graphql
 NODE_URI=https://rpc.preprod.midnight.network
 PROOF_SERVER_URI=http://127.0.0.1:6302
 CONTRACT_ADDRESS=ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde
 ```
 
----
+### Commands
 
-## 4. Wallet Network Validation
-
-When connecting via **1AM Wallet**:
-1. PrivateRank detects the wallet's active network.
-2. If the wallet is on **Midnight Preprod Testnet** (`preprod`), authentication proceeds normally.
-3. If the wallet is on any other network, the **Wrong Network** modal is displayed:
-   ```text
-   Wrong Network
-
-   Please switch your wallet to Midnight Preprod Testnet.
-
-   [Switch to Preprod]
-   ```
-4. Clicking **[Switch to Preprod]** triggers programmatic network switching via the 1AM Wallet provider.
-
----
-
-## 5. Local Development (Without Docker)
-
-If you prefer running directly on your host machine:
-
-### Prerequisites
-- Node.js >= 18.x
-- npm >= 9.x
-
-### Steps
 ```bash
-# 1. Clone repository & install dependencies
-git clone https://github.com/yashdjadhav08-del/privaterank-dapp
-cd privaterank-dapp
-npm install
-
-# 2. Run unit & integration tests
-npm test
-
-# 3. Start local development server
 npm run dev
-
-# 4. Build production bundle
+npm test
 npm run build
 ```
 
 ---
 
-## 6. Zero-Knowledge Circuits (`contracts/privaterank.compact`)
-
-The Midnight Compact contract deployed on Midnight Preprod (`ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde`) defines:
-- **Ledger State**: `tournaments` map maintaining tournament configurations, minimum rank/score/wins criteria, organizer identities, and lifecycle status (DRAFT = 0, OPEN = 1, CLOSED = 2, COMPLETED = 3, ARCHIVED = 4).
-- **Witnesses**: Private player credentials and proof salt verified client-side via Midnight Proof Server.
-- **On-Chain Circuits**:
-  - `createTournament(tournamentId, organizer, minRank, minScore, minWins, deadline)`: Deploys a new tournament instance with entry criteria.
-  - `joinTournament(tournamentId, playerKey, proof)`: Zero-Knowledge eligibility verification and on-chain participation registration.
-  - `closeTournament(tournamentId, organizer)`: Closes active registrations and transitions tournament status to `CLOSED`.
-  - `archiveTournament(tournamentId, organizer)`: Archives a completed or closed tournament, removing it from active discovery while preserving on-chain history.
-
----
-
----
-
-## 7. CI/CD Pipeline
-
-PrivateRank employs GitHub Actions for continuous integration and explicit continuous deployment targeting **Midnight Preprod Testnet**.
-
-### Continuous Integration (CI)
-The CI pipeline (`.github/workflows/ci.yml`) triggers automatically on:
-- `push` to `main`, `master`, and `develop`
-- `pull_request` to `main`, `master`, and `develop`
-
-#### Automated Checks
-Every push or PR must pass all stages in order:
-1. **Dependency Installation**: `npm ci` (clean, frozen lockfile)
-2. **TypeScript / Type Check**: `npm run typecheck` (`tsc --noEmit`)
-3. **Lint**: `npm run lint` (`tsc --noEmit`)
-4. **Frontend & Logic Tests**: `npm run test:frontend` (UI, components, state, ZK prover, access control)
-5. **Contract Tests**: `npm run test:contract` (tournament lifecycle, team invariants, schedule rules, 1AM wallet mocking)
-6. **Smart Contract Validation**: `npm run contract:check` (verifies compiled Compact bindings & type declarations)
-7. **Production Build**: `npm run build` (`tsc && vite build`)
-
-If any check fails, the pipeline immediately halts with `✗ CI FAILED`.
-
-### Continuous Deployment (CD)
-The deployment workflow (`.github/workflows/deploy.yml`) is **manually triggered** via `workflow_dispatch` and targets **Midnight Preprod Testnet ONLY**:
+## 📁 Project Structure
 
 ```text
-GitHub Actions → Run workflow → Deploy to Midnight Preprod
-   ↓
-Verify Target Network is Preprod
-   ↓
-Run Contract Tests & Type Checks
-   ↓
-Verify Compact ZKIR Circuit Artifacts
-   ↓
-Verify Production Build
-   ↓
-Deploy to Midnight Preprod RPC
-   ↓
-Confirm Deployment Receipt
+PrivateRank/
+├── contracts/
+│   └── privaterank.compact
+├── src/
+│   ├── components/
+│   ├── contracts/
+│   ├── hooks/
+│   ├── services/
+│   └── pages/
+├── tests/
+├── public/
+├── docs/
+├── PROPOSAL.md
+├── README.md
+├── package.json
+└── .github/
+    └── workflows/
 ```
-
-#### Mainnet Safety Guard
-Automatic or manual deployment to **Midnight Mainnet is strictly disabled**. Any attempt to target `mainnet` triggers an immediate fatal security rejection:
-```text
-❌ FATAL SECURITY ERROR: Target network is set to "mainnet"!
-PrivateRank enforces Midnight Preprod ONLY. Mainnet auto-deployment is disabled.
-```
-
-#### GitHub Secrets Configuration
-Configure these repository secrets in GitHub (`Settings` → `Secrets and variables` → `Actions`):
-- `MIDNIGHT_PREPROD_RPC`: Midnight Preprod RPC URL (e.g. `https://rpc.preprod.midnight.network`)
-- `MIDNIGHT_PREPROD_INDEXER`: Midnight Preprod Indexer GraphQL URL
-- `MIDNIGHT_PREPROD_PROOF_SERVER`: Midnight Proof Server URL (e.g. `http://127.0.0.1:6300`)
-- `DEPLOYER_PRIVATE_KEY` / `DEPLOYER_SEED`: Private key or seed phrase for deployer account on Midnight Preprod (never logged or exposed in CI logs)
 
 ---
 
-## 8. Verification & Compliance Checklist
+## 🔒 Security & Privacy Notes
 
-- [x] **Real Wallet Connection**: Powered by 1AM Wallet extension (`window.midnight['1am']`).
-- [x] **Real Wallet Address**: Derived directly from the connected account.
-- [x] **Real Wallet Signing**: Cryptographic challenge sign payload `{ data, options: { encoding: 'text' } }`.
-- [x] **Midnight Preprod Testnet ONLY**: No exposure of other networks or multi-chain selectors.
-- [x] **Wrong Network Modal & Switching**: Programmatic switch action with real wallet integration.
-- [x] **Dockerized Production Setup**: Multi-stage `Dockerfile` and `docker-compose.yml`.
-- [x] **CI/CD Automation**: GitHub Actions CI (`ci.yml`) and manual Preprod CD (`deploy.yml`).
-- [x] **No Blank Screen**: Protected by React Error Boundaries.
-- [x] **Vercel Cloud Deployment**: Configured via `vercel.json` with SPA routing and WebAssembly MIME headers for Midnight Ledger SDK.
+- PrivateRank is a technical demonstration for the **Midnight Builder Challenge Level 4**.
+- The application targets **Midnight Preprod Testnet**.
+- Never commit wallet seed phrases, private keys, or secret credentials.
+- Testnet assets should not be treated as real-world funds.
+- Transaction success should be based on real wallet and blockchain verification.
+- Privacy-sensitive player information should not be unnecessarily exposed.
 
+---
+
+## 🚀 Future Roadmap
+
+### Phase 1 — Level 4 MVP
+
+- Real tournament creation
+- Real player participation
+- Privacy-preserving eligibility
+- Solo and Team tournaments
+- Organizer and Player portals
+- 1AM Wallet integration
+- Midnight Preprod deployment
+- Docker infrastructure
+
+### Phase 2 — Advanced Privacy
+
+- Advanced gaming credential providers
+- Team-level privacy proofs
+- Private team formation
+- Privacy-preserving reputation
+
+### Phase 3 — Production Readiness
+
+- Security audit
+- Smart contract optimization
+- Mainnet readiness
+- Broader ecosystem integrations
+
+---
+
+## 📝 Project Information
+
+**Project Name:** PrivateRank
+
+**Track:** Midnight Builder Challenge — Level 4 (Gaming / Consumer Focus)
+
+**Challenge:** Midnight Builder Challenge — Level 4
+
+**GitHub:** https://github.com/yashdjadhav08-del/privaterank-dapp
+
+**Demo Video:** https://drive.google.com/file/d/1WYbwtTiXKXnegVbqsOzEVOzMJECtxSoA/view?usp=sharing
+
+**X / Social:** Not provided — add your X / social profile here if available
+
+**Contract Address:** ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde
+
+**Compact Smart Contract / Deployment Transaction:**  
+https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde
+
+**Live Application:**  
+https://privaterank-dapp.vercel.app
+
+---
+
+## 🌙 Built with Midnight
+
+PrivateRank explores how privacy-preserving blockchain technology can make competitive gaming **verifiable without making unnecessary personal information public**.
+
+> **PrivateRank — Prove your eligibility. Protect your identity. Compete with confidence.**
