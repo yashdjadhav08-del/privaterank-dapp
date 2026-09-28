@@ -19,6 +19,7 @@ import {
   TournamentType 
 } from '../types';
 import { TransactionModal } from '../components/common/TransactionModal';
+import { DeploymentProgress } from '../services/contractDeploymentService';
 import { 
   Gamepad2, 
   Trophy, 
@@ -35,7 +36,11 @@ import {
   AlertCircle,
   Trash2,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  Rocket,
+  ExternalLink,
+  Copy,
+  XCircle
 } from 'lucide-react';
 
 interface DashboardPageProps {
@@ -77,10 +82,71 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
   const [deploySuccessNotice, setDeploySuccessNotice] = useState<{ address: string } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Preprod Contract Status — internal check only, not displayed to organizers
+  // Preprod Contract Status
   const [isContractDeployed, setIsContractDeployed] = useState<boolean>(false);
   const [isContractChecking, setIsContractChecking] = useState<boolean>(true);
   const [contractVerifyReason, setContractVerifyReason] = useState<string | null>(null);
+  const [canonicalContractAddress, setCanonicalContractAddress] = useState<string | null>(null);
+
+  // Deploy Contract Modal State
+  const [showDeployModal, setShowDeployModal] = useState(false);
+  const [isDeploying, setIsDeploying] = useState(false);
+  const [deployProgress, setDeployProgress] = useState<DeploymentProgress | null>(null);
+  const [deployResult, setDeployResult] = useState<{ contractAddress: string; txHash: string; blockHeight?: number } | null>(null);
+  const [deployError, setDeployError] = useState<string | null>(null);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  const handleCopy = (text: string, field: string) => {
+    navigator.clipboard.writeText(text).catch(() => {});
+    setCopiedField(field);
+    setTimeout(() => setCopiedField(null), 1800);
+  };
+
+  const handleDeployContract = async () => {
+    setIsDeploying(true);
+    setDeployError(null);
+    setDeployResult(null);
+    setDeployProgress(null);
+
+    try {
+      const result = await ContractDeploymentService.deployContractVia1Am(
+        (progress: DeploymentProgress) => {
+          setDeployProgress(progress);
+        }
+      );
+      // Find block height from last progress event if available
+      setDeployResult({
+        contractAddress: result.contractAddress,
+        txHash: result.txHash
+      });
+      setIsContractDeployed(true);
+      setCanonicalContractAddress(result.contractAddress);
+      setDeploySuccessNotice({ address: result.contractAddress });
+      await refreshData();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setDeployError(msg);
+    } finally {
+      setIsDeploying(false);
+    }
+  };
+
+  // Derive step number (1-7) from DeploymentProgress
+  const getDeployStep = (progress: DeploymentProgress | null): number => {
+    if (!progress) return 0;
+    switch (progress.step) {
+      case 'CHECKING_WALLET': return 1;
+      case 'CHECKING_DUST': return 1;
+      case 'PREPARING_TRANSACTION': return 2;
+      case 'AWAITING_APPROVAL': return 3;
+      case 'BROADCASTING': return 4;
+      case 'SUBMITTED': return 4;
+      case 'WAITING_INDEXER': return 5;
+      case 'CONFIRMED': return 7;
+      case 'FAILED': return -1;
+      default: return 0;
+    }
+  };
 
   const handleManualSync = async () => {
     setIsSyncing(true);
@@ -88,6 +154,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
       const res = await verifyContractDeployedOnPreprod(undefined, { skipCache: true });
       setIsContractDeployed(res.isDeployed);
       setContractVerifyReason(res.reason || res.error || null);
+      if (res.contractAddress) setCanonicalContractAddress(res.contractAddress);
       await refreshData();
     } catch (e) {
       console.warn('[Dashboard] Manual sync error:', e);
@@ -109,6 +176,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
       if (isMounted) {
         setIsContractDeployed(res.isDeployed);
         setContractVerifyReason(res.reason || res.error || null);
+        if (res.contractAddress) setCanonicalContractAddress(res.contractAddress);
         setIsContractChecking(false);
       }
     }).catch(err => {
@@ -723,7 +791,98 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
             
             {/* 1. Quick Action & Stats Hub */}
             <section className="glass-panel" style={{ padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+
+              {/* Deploy Contract Banner — shown only when contract is NOT yet deployed on Preprod */}
+              {!isContractChecking && !isContractDeployed && (
+                <div style={{
+                  padding: '18px 20px',
+                  borderRadius: '12px',
+                  background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.18) 0%, rgba(59, 130, 246, 0.12) 100%)',
+                  border: '1.5px solid rgba(139, 92, 246, 0.5)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '16px',
+                  flexWrap: 'wrap'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '12px' }}>
+                    <div style={{
+                      padding: '10px',
+                      borderRadius: '10px',
+                      background: 'rgba(139, 92, 246, 0.2)',
+                      flexShrink: 0
+                    }}>
+                      <Rocket size={22} style={{ color: '#a78bfa' }} />
+                    </div>
+                    <div>
+                      <div style={{ fontWeight: 800, color: '#e2e8f0', fontSize: '0.95rem', marginBottom: '3px' }}>
+                        PrivateRank Contract Not Yet Deployed
+                      </div>
+                      <div style={{ fontSize: '0.8rem', color: '#94a3b8', maxWidth: '360px', lineHeight: '1.5' }}>
+                        Deploy the compiled Compact smart contract to Midnight Preprod to enable tournament creation with ZK privacy.
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    id="deploy-contract-btn"
+                    onClick={() => setShowDeployModal(true)}
+                    disabled={isDeploying}
+                    style={{
+                      padding: '10px 22px',
+                      background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '10px',
+                      fontWeight: 800,
+                      fontSize: '0.9rem',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      boxShadow: '0 4px 20px rgba(139,92,246,0.4)',
+                      transition: 'all 0.2s',
+                      whiteSpace: 'nowrap',
+                      flexShrink: 0
+                    }}
+                  >
+                    <Rocket size={16} />
+                    Deploy PrivateRank Contract
+                  </button>
+                </div>
+              )}
+
+              {/* Deployed Contract Status */}
+              {!isContractChecking && isContractDeployed && canonicalContractAddress && (
+                <div style={{
+                  padding: '12px 16px',
+                  borderRadius: '10px',
+                  background: 'rgba(16, 185, 129, 0.08)',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '10px'
+                }}>
+                  <CheckCircle2 size={16} style={{ color: '#34d399', flexShrink: 0 }} />
+                  <div style={{ fontSize: '0.8rem', color: '#94a3b8' }}>
+                    <span style={{ color: '#34d399', fontWeight: 700 }}>Contract Deployed</span>
+                    {' — '}
+                    <span style={{ fontFamily: 'monospace', color: '#e2e8f0', fontSize: '0.78rem' }}>
+                      {canonicalContractAddress.slice(0, 16)}...{canonicalContractAddress.slice(-8)}
+                    </span>
+                    <a
+                      href={`https://midnight.network/explorer/contracts/${canonicalContractAddress}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      style={{ color: '#38bdf8', marginLeft: '8px', display: 'inline-flex', alignItems: 'center', gap: '3px', textDecoration: 'none' }}
+                    >
+                      <ExternalLink size={12} />
+                    </a>
+                  </div>
+                </div>
+              )}
+
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px' }}>
+
                 <h2 style={{ fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <Trophy size={18} className="text-purple-400" />
                   Tournament Operations
@@ -1506,6 +1665,311 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigate }) => {
                   <><Trash2 size={14} /> Archive On-Chain</>
                 )}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ============================
+          DEPLOY CONTRACT MODAL
+          Real 7-step deployment flow
+          via ContractDeploymentService
+          ============================ */}
+      {showDeployModal && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 9999,
+            background: 'rgba(0,0,0,0.75)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: '20px'
+          }}
+          onClick={(e) => { if (e.target === e.currentTarget && !isDeploying) setShowDeployModal(false); }}
+        >
+          <div
+            style={{
+              background: 'linear-gradient(160deg, #0d0d1f 0%, #0f172a 60%, #130820 100%)',
+              border: '1px solid rgba(139,92,246,0.35)',
+              borderRadius: '20px',
+              padding: '32px',
+              maxWidth: '560px',
+              width: '100%',
+              boxShadow: '0 25px 80px rgba(0,0,0,0.7), 0 0 60px rgba(139,92,246,0.08)',
+              position: 'relative',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '24px'
+            }}
+          >
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                <div style={{ padding: '10px', borderRadius: '12px', background: 'rgba(139,92,246,0.18)' }}>
+                  <Rocket size={24} style={{ color: '#a78bfa' }} />
+                </div>
+                <div>
+                  <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 800, color: '#f8fafc' }}>
+                    Deploy PrivateRank Contract
+                  </h2>
+                  <p style={{ margin: 0, fontSize: '0.78rem', color: '#64748b', marginTop: '2px' }}>
+                    Midnight Preprod Testnet · Real Compact Deployment
+                  </p>
+                </div>
+              </div>
+              {!isDeploying && (
+                <button
+                  onClick={() => setShowDeployModal(false)}
+                  style={{
+                    background: 'none', border: 'none', cursor: 'pointer',
+                    color: '#475569', padding: '6px', borderRadius: '8px',
+                    display: 'flex', alignItems: 'center'
+                  }}
+                >
+                  <XCircle size={22} />
+                </button>
+              )}
+            </div>
+
+            {/* Steps Panel — always visible during/after deployment */}
+            {(isDeploying || deployProgress) && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                {[
+                  { n: 1, label: 'Wallet & DUST Check', desc: 'Verify 1AM Wallet connection and Preprod network' },
+                  { n: 2, label: 'Build Contract Transaction', desc: 'Construct Compact contract deployment intent' },
+                  { n: 3, label: '1AM Wallet Approval', desc: 'Approve transaction + tDUST fee in wallet popup' },
+                  { n: 4, label: 'Broadcast to Preprod', desc: 'Submit signed transaction to Midnight network' },
+                  { n: 5, label: 'Indexer Confirmation', desc: 'Wait for Midnight Preprod indexer to confirm' },
+                  { n: 6, label: 'Address Extraction', desc: 'Read real contract address from tx.contractActions' },
+                  { n: 7, label: 'Deployed & Verified', desc: 'Contract live on Midnight Preprod Testnet' },
+                ].map(({ n, label, desc }) => {
+                  const currentStep = getDeployStep(deployProgress);
+                  const isFailed = deployProgress?.step === 'FAILED';
+                  const isDone = deployResult !== null && !isFailed;
+                  const isActive = !isFailed && !isDone && currentStep === n;
+                  const isPast = !isFailed && (isDone ? true : currentStep > n);
+
+                  return (
+                    <div key={n} style={{ display: 'flex', alignItems: 'flex-start', gap: '12px', padding: '10px 0', borderBottom: n < 7 ? '1px solid rgba(255,255,255,0.04)' : 'none' }}>
+                      {/* Circle indicator */}
+                      <div style={{
+                        width: '28px', height: '28px', borderRadius: '50%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        flexShrink: 0, fontSize: '0.75rem', fontWeight: 700,
+                        marginTop: '1px',
+                        background: isPast
+                          ? 'rgba(16,185,129,0.25)'
+                          : isActive
+                          ? 'rgba(139,92,246,0.3)'
+                          : 'rgba(255,255,255,0.05)',
+                        border: isPast
+                          ? '2px solid rgba(52,211,153,0.7)'
+                          : isActive
+                          ? '2px solid rgba(167,139,250,0.7)'
+                          : '2px solid rgba(255,255,255,0.08)',
+                        color: isPast ? '#34d399' : isActive ? '#a78bfa' : '#475569'
+                      }}>
+                        {isPast ? <CheckCircle2 size={14} /> : isActive ? <Loader2 size={14} className="animate-spin" /> : n}
+                      </div>
+
+                      {/* Step text */}
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: isPast ? '#34d399' : isActive ? '#e2e8f0' : '#475569' }}>
+                          {label}
+                        </div>
+                        <div style={{ fontSize: '0.75rem', color: '#475569', marginTop: '1px' }}>{desc}</div>
+                        {/* Live progress message for active step */}
+                        {isActive && deployProgress?.message && (
+                          <div style={{ fontSize: '0.76rem', color: '#a78bfa', marginTop: '4px', fontStyle: 'italic' }}>
+                            {deployProgress.message}
+                            {deployProgress.attempt && deployProgress.maxAttempts && (
+                              <span style={{ color: '#64748b', marginLeft: '6px' }}>
+                                (attempt {deployProgress.attempt}/{deployProgress.maxAttempts}
+                                {deployProgress.elapsedSeconds != null ? `, ${deployProgress.elapsedSeconds}s` : ''})
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Success Result */}
+            {deployResult && (
+              <div style={{
+                padding: '20px',
+                borderRadius: '14px',
+                background: 'rgba(16,185,129,0.08)',
+                border: '1px solid rgba(16,185,129,0.4)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '14px'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: '#34d399', fontWeight: 800, fontSize: '1rem' }}>
+                  <CheckCircle2 size={22} />
+                  Contract Deployed Successfully
+                </div>
+
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {/* Contract Address */}
+                  <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '10px', padding: '12px 14px' }}>
+                    <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Contract Address</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      <span style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#e2e8f0', wordBreak: 'break-all', flex: 1 }}>
+                        {deployResult.contractAddress}
+                      </span>
+                      <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
+                        <button
+                          onClick={() => handleCopy(deployResult.contractAddress, 'contract')}
+                          title="Copy contract address"
+                          style={{ background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: copiedField === 'contract' ? '#34d399' : '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem' }}
+                        >
+                          <Copy size={12} />
+                          {copiedField === 'contract' ? 'Copied!' : 'Copy'}
+                        </button>
+                        <a
+                          href={`https://midnight.network/explorer/contracts/${deployResult.contractAddress}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          title="View on Midnight Explorer"
+                          style={{ background: 'rgba(56,189,248,0.1)', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: '#38bdf8', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', textDecoration: 'none' }}
+                        >
+                          <ExternalLink size={12} />
+                          Explorer
+                        </a>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* TX Hash */}
+                  {deployResult.txHash && (
+                    <div style={{ background: 'rgba(0,0,0,0.3)', borderRadius: '10px', padding: '12px 14px' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#64748b', marginBottom: '4px', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Transaction Hash</div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                        <span style={{ fontFamily: 'monospace', fontSize: '0.8rem', color: '#e2e8f0', wordBreak: 'break-all', flex: 1 }}>
+                          {deployResult.txHash}
+                        </span>
+                        <button
+                          onClick={() => handleCopy(deployResult.txHash, 'txhash')}
+                          style={{ background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: '6px', padding: '5px 8px', cursor: 'pointer', color: copiedField === 'txhash' ? '#34d399' : '#94a3b8', display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.72rem', flexShrink: 0 }}
+                        >
+                          <Copy size={12} />
+                          {copiedField === 'txhash' ? 'Copied!' : 'Copy'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <div style={{ fontSize: '0.82rem', color: '#94a3b8', lineHeight: '1.5' }}>
+                  ✅ Contract is verified on Midnight Preprod Indexer. You can now create tournaments.
+                </div>
+              </div>
+            )}
+
+            {/* Error State */}
+            {deployError && !isDeploying && (
+              <div style={{
+                padding: '16px',
+                borderRadius: '12px',
+                background: 'rgba(239,68,68,0.08)',
+                border: '1px solid rgba(239,68,68,0.35)',
+                display: 'flex',
+                alignItems: 'flex-start',
+                gap: '10px'
+              }}>
+                <XCircle size={18} style={{ color: '#f87171', flexShrink: 0, marginTop: '1px' }} />
+                <div>
+                  <div style={{ fontWeight: 700, color: '#f87171', fontSize: '0.9rem', marginBottom: '4px' }}>Deployment Failed</div>
+                  <div style={{ fontSize: '0.82rem', color: '#cbd5e1', lineHeight: '1.5', wordBreak: 'break-word' }}>{deployError}</div>
+                </div>
+              </div>
+            )}
+
+            {/* Idle State — before deployment starts */}
+            {!isDeploying && !deployProgress && !deployResult && !deployError && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <div style={{
+                  padding: '16px',
+                  borderRadius: '12px',
+                  background: 'rgba(255,255,255,0.03)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  fontSize: '0.85rem',
+                  color: '#94a3b8',
+                  lineHeight: '1.7'
+                }}>
+                  <div style={{ fontWeight: 700, color: '#e2e8f0', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Shield size={16} style={{ color: '#a78bfa' }} />
+                    What happens when you click Deploy:
+                  </div>
+                  <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <li>1AM Wallet extension popup will ask you to approve</li>
+                    <li>Real tDUST fees will be deducted from your Preprod wallet</li>
+                    <li>Compact PrivateRank contract is deployed with all ZK verifier keys</li>
+                    <li>Deployment confirmed via official Midnight Preprod GraphQL Indexer</li>
+                    <li>Real 64-character contract address is extracted from the transaction</li>
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end', marginTop: '4px' }}>
+              {!isDeploying && (
+                <button
+                  onClick={() => {
+                    setShowDeployModal(false);
+                    setDeployProgress(null);
+                    setDeployError(null);
+                    if (!deployResult) setDeployResult(null);
+                  }}
+                  style={{
+                    padding: '9px 20px',
+                    background: 'rgba(255,255,255,0.06)',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    borderRadius: '10px',
+                    color: '#94a3b8',
+                    fontWeight: 600,
+                    fontSize: '0.88rem',
+                    cursor: 'pointer'
+                  }}
+                >
+                  {deployResult ? 'Close' : 'Cancel'}
+                </button>
+              )}
+              {!deployResult && (
+                <button
+                  id="deploy-contract-confirm-btn"
+                  onClick={handleDeployContract}
+                  disabled={isDeploying}
+                  style={{
+                    padding: '10px 28px',
+                    background: isDeploying
+                      ? 'rgba(139,92,246,0.4)'
+                      : 'linear-gradient(135deg, #7c3aed, #4f46e5)',
+                    border: 'none',
+                    borderRadius: '10px',
+                    color: '#fff',
+                    fontWeight: 800,
+                    fontSize: '0.9rem',
+                    cursor: isDeploying ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    boxShadow: isDeploying ? 'none' : '0 4px 20px rgba(139,92,246,0.35)'
+                  }}
+                >
+                  {isDeploying ? (
+                    <><Loader2 size={16} className="animate-spin" /> Deploying to Preprod...</>
+                  ) : deployError ? (
+                    <><Rocket size={16} /> Retry Deployment</>
+                  ) : (
+                    <><Rocket size={16} /> Deploy to Midnight Preprod</>
+                  )}
+                </button>
+              )}
             </div>
           </div>
         </div>
