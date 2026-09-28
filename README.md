@@ -17,7 +17,7 @@ PrivateRank is a Web3 gaming tournament platform built strictly for the **Midnig
 | Deliverable | Details / Link |
 | :--- | :--- |
 | 🌐 **Live Web Application (Vercel)** | [https://privaterank-dapp.vercel.app](https://privaterank-dapp.vercel.app) |
-| ⛓️ **Compact Smart Contract** | [1AM Preprod Explorer](https://explorer.1am.xyz/tx/eb364a16601821647689a2ec8bd727b57ee10269927fef5ec5725ce478b061e7?network=preprod) |
+| ⛓️ **Compact Smart Contract** | [1AM Preprod Contract Explorer](https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde) |
 | 🎥 **Demo Video** | [Google Drive Demo](https://drive.google.com/file/d/1WYbwtTiXKXnegVbqsOzEVOzMJECtxSoA/view?usp=sharing) |
 | 🐦 **X / Social Profile** | Not provided — add your X / social profile here if available |
 | 💻 **Source Code Repository** | [https://github.com/yashdjadhav08-del/privaterank-dapp](https://github.com/yashdjadhav08-del/privaterank-dapp) |
@@ -32,7 +32,7 @@ PrivateRank is a Web3 gaming tournament platform built strictly for the **Midnig
 - **Track**: Midnight Builder Challenge — Level 4 (Gaming & Privacy)
 - **Target Network**: Midnight Preprod Testnet (1AM Wallet)
 - **GitHub**: [https://github.com/yashdjadhav08-del/privaterank-dapp](https://github.com/yashdjadhav08-del/privaterank-dapp)
-- **Deployment Transaction**: [https://explorer.1am.xyz/tx/eb364a16601821647689a2ec8bd727b57ee10269927fef5ec5725ce478b061e7?network=preprod](https://explorer.1am.xyz/tx/eb364a16601821647689a2ec8bd727b57ee10269927fef5ec5725ce478b061e7?network=preprod)
+- **Deployment Transaction**: [https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde](https://explorer.1am.xyz/contract/ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde)
 - **Canonical Contract Address**: `ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde`
 
 ---
