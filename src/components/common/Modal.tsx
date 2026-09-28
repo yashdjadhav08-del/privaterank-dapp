@@ -21,12 +21,20 @@ export const Modal: React.FC<ModalProps> = ({
       if (e.key === 'Escape') onClose();
     };
     if (isOpen) {
-      document.body.style.overflow = 'hidden';
-      window.addEventListener('keydown', handleKeyDown);
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.style.overflow = 'hidden';
+      }
+      if (typeof window !== 'undefined') {
+        window.addEventListener('keydown', handleKeyDown);
+      }
     }
     return () => {
-      document.body.style.overflow = 'auto';
-      window.removeEventListener('keydown', handleKeyDown);
+      if (typeof document !== 'undefined' && document.body) {
+        document.body.style.overflow = 'auto';
+      }
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('keydown', handleKeyDown);
+      }
     };
   }, [isOpen, onClose]);
 

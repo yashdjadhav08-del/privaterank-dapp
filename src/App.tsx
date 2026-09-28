@@ -23,7 +23,9 @@ export const App: React.FC = () => {
       setSelectedTournamentId(extra.tournamentId);
     }
     setCurrentView(view);
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    if (typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
   };
 
   const renderContent = () => {

@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { 
   Application, 
   GameCategory,
@@ -109,6 +109,17 @@ const PROOFS_STORAGE_KEY = 'privaterank_user_proofs';
 const TournamentContext = createContext<TournamentContextType | null>(null);
 
 export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const isMountedRef = useRef(true);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  const canUpdateState = () => isMountedRef.current && typeof window !== 'undefined';
+
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -134,6 +145,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     // PRIMARY: Try the backend server (source of truth for both Organizer + Player)
     try {
       const response = await fetchTournamentsFromServer();
+      if (!isMountedRef.current || typeof window === 'undefined') return;
       setServerStatus('ok');
       setServerResponse(response);
 
@@ -192,15 +204,19 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
         return item;
       });
 
+      if (!isMountedRef.current || typeof window === 'undefined') return;
       setTournaments(mapped);
       ContractService.setTournaments(mapped);
       console.log(`[TournamentContext] Loaded ${mapped.length} tournament(s) from backend server`);
     } catch (serverErr) {
+      if (!isMountedRef.current || typeof window === 'undefined') return;
       console.warn('[TournamentContext] Backend server unavailable:', (serverErr as Error).message);
       setServerStatus('unreachable');
       // When backend is unreachable, do NOT invent mock tournaments
       setTournaments([]);
     }
+
+    if (!isMountedRef.current || typeof window === 'undefined') return;
 
     // Purge any legacy localStorage tournament items from older schema versions
     try {
@@ -213,35 +229,48 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
       // non-fatal
     }
 
+    if (!isMountedRef.current || typeof window === 'undefined') return;
     setApplications(ContractService.getAllApplications());
     setTeams(ContractService.getTeams());
   }, []);
 
   useEffect(() => {
+    isMountedRef.current = true;
+
     // Initial health check to determine server status immediately
     checkServerHealth().then(h => {
+      if (!isMountedRef.current || typeof window === 'undefined') return;
       if (h.ok) {
         setServerStatus('ok');
       } else {
         console.warn('[TournamentContext] Backend server unreachable:', h.error);
         setServerStatus('unreachable');
       }
+    }).catch(() => {
+      // non-fatal
     });
 
-    refreshData();
-    const interval = setInterval(() => {
+    if (isMountedRef.current && typeof window !== 'undefined') {
       refreshData();
+    }
+    const interval = setInterval(() => {
+      if (isMountedRef.current && typeof window !== 'undefined') {
+        refreshData();
+      }
     }, 8000);
     const unsubscribe = MidnightTransactionService.subscribeProgress((progress) => {
+      if (!isMountedRef.current || typeof window === 'undefined') return;
       setTxProgress(progress);
     });
     return () => {
+      isMountedRef.current = false;
       clearInterval(interval);
       unsubscribe();
     };
   }, [refreshData]);
 
   const resetTxState = () => {
+    if (!canUpdateState()) return;
     setTxProgress(null);
     setTxReceipt(null);
     setError(null);
