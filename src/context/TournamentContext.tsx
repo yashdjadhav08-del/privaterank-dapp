@@ -564,3 +564,6 @@ export const useTournament = () => {
   }
   return context;
 };
+
+export const useTournaments = useTournament;
+

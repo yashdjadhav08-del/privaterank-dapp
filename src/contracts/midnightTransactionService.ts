@@ -3741,3 +3741,6 @@ wallet submit payload length = ${signPayload.data.length}`);
   }
 }
 
+export const midnightTxService = MidnightTransactionService;
+
+

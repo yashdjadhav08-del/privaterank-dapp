@@ -119,3 +119,80 @@ export class ZkProverService {
   }
 }
 
+export interface ProofResult {
+  proofHash: string;
+  circuit: string;
+  publicInputs: {
+    minRank: number;
+    minScore: number;
+    minWins: number;
+    meetsRank: boolean;
+    meetsScore: boolean;
+    meetsWins: boolean;
+  };
+  commitmentHash: string;
+  nullifierHash: string;
+  timestamp: string;
+}
+
+export const zkProver = {
+  async generateEligibilityProof(
+    credentials: any,
+    requirements: TournamentRequirements,
+    personalInfo?: any,
+    walletAddress?: string
+  ): Promise<ProofResult> {
+    const pInfo = personalInfo || {
+      fullName: 'Anonymous Player',
+      email: 'player@privaterank.zk',
+      phone: '+0000000000',
+      country: 'Secret',
+      dateOfBirth: '2000-01-01'
+    };
+    const addr = walletAddress || 'addr_test1midnight_player_alpha';
+    const payload = await ZkProverService.generateEligibilityProof({
+      tournamentId: 't-zk-circuit',
+      requirements,
+      gamingCredentials: {
+        rank: credentials.rank,
+        score: credentials.score,
+        wins: credentials.wins,
+        losses: credentials.losses || 0,
+        achievements: credentials.achievements || ['Verified Player'],
+        gameTitle: credentials.gameTitle || 'Competitive Esports',
+        verifiedAt: credentials.verifiedAt || new Date().toISOString()
+      },
+      personalInfo: pInfo,
+      walletAddress: addr
+    });
+
+    return {
+      proofHash: payload.commitmentHash,
+      circuit: 'joinTournament',
+      publicInputs: {
+        minRank: requirements.minimumRank,
+        minScore: requirements.minimumScore,
+        minWins: requirements.minimumWins,
+        meetsRank: payload.rankSatisfied,
+        meetsScore: payload.scoreSatisfied,
+        meetsWins: payload.winsSatisfied
+      },
+      commitmentHash: payload.commitmentHash,
+      nullifierHash: payload.nullifierHash,
+      timestamp: new Date().toISOString()
+    };
+  },
+
+  async verifyEligibilityProof(proof: ProofResult, requirements: TournamentRequirements): Promise<boolean> {
+    if (!proof || !proof.commitmentHash) return false;
+    return (
+      proof.publicInputs.meetsRank &&
+      proof.publicInputs.meetsScore &&
+      proof.publicInputs.meetsWins &&
+      proof.publicInputs.minRank >= requirements.minimumRank &&
+      proof.publicInputs.minScore >= requirements.minimumScore &&
+      proof.publicInputs.minWins >= requirements.minimumWins
+    );
+  }
+};
+

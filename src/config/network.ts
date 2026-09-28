@@ -178,6 +178,11 @@ export const PREPROD_CONFIG: PreprodNetworkConfig = {
   }
 };
 
+export const PREPROD_RPC_URL = PREPROD_CONFIG.rpcUrl;
+export const PREPROD_INDEXER_URL = PREPROD_CONFIG.indexerUrl;
+export const PREPROD_PROOF_SERVER_URL = PREPROD_CONFIG.proofServerUrl;
+export const PREPROD_CONTRACT_ADDRESS = DEFAULT_CANONICAL_CONTRACT_ADDRESS ?? 'ba1936191e07a61db40154cf2bf9dd797fde14d3304323231e3b39b7a6d1dcde';
+
 /**
  * Updates and persists the verified deployed contract address ONLY after indexer confirmation.
  * This establishes the ONE canonical PrivateRank contract address used across all organizers and tournaments.

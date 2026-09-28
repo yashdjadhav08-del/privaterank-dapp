@@ -1047,3 +1047,6 @@ export class ContractService {
   }
 }
 
+export const contractService = ContractService;
+
+

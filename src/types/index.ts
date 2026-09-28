@@ -66,6 +66,8 @@ export interface GamingCredentials {
   verifiedAt: string;
 }
 
+export type PlayerCredentials = GamingCredentials;
+
 export interface PlayerProfile {
   walletAddress: string;
   anonymousId: string;
