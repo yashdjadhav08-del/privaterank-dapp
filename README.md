@@ -20,8 +20,8 @@ PrivateRank is a privacy-preserving gaming tournament platform built on the **Mi
 | 🎥 Demo Video | [Google Drive Demo](https://drive.google.com/file/d/1WYbwtTiXKXnegVbqsOzEVOzMJECtxSoA/view?usp=sharing) | Full platform & ZK verification walkthrough |
 | 🐦 X / Social Profile | [X Announcement Post](https://x.com/Yashjadhav38791/status/2104624216058564972) | Project announcement post on X |
 | 📋 Project Proposal | [`PROPOSAL.md`](PROPOSAL.md) | Level 4 project proposal & specification |
-| 📖 Usage Guide | [`docs/USAGE.md`](docs/USAGE.md) | Step-by-step player & organizer walkthrough |
-| ⚙️ CI Workflow | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | Continuous integration workflow |
+| 📖 Usage Guide | [docs/USAGE.md](https://github.com/yashdjadhav08-del/privaterank-dapp/blob/main/USAGE.md) | Step-by-step player & organizer walkthrough |
+| ⚙️ CI Workflow | [.github/workflows/ci.yml](https://github.com/yashdjadhav08-del/privaterank-dapp/blob/main/.github/workflows/ci.yml) | Continuous integration workflow |
 
 ---
 
