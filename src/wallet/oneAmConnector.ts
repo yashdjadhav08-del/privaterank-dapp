@@ -205,7 +205,10 @@ export class OneAmConnector {
       throw new Error('1AM Wallet is not installed.');
     }
 
-    const provider = window.midnight!['1am']!;
+    const provider = this.getOneAmProvider();
+    if (!provider) {
+      throw new Error('1AM Wallet provider is not available.');
+    }
 
     if (typeof provider.switchNetwork === 'function') {
       await provider.switchNetwork(NETWORK);
@@ -406,8 +409,8 @@ export class OneAmConnector {
       return this.connectedApi;
     }
 
-    if (this.isOneAmInstalled()) {
-      const provider = window.midnight!['1am']!;
+    const provider = this.getOneAmProvider();
+    if (provider) {
       const api = await provider.connect(NETWORK);
       this.connectedApi = api;
       return api;

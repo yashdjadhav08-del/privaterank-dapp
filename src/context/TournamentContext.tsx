@@ -116,8 +116,10 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const [serverResponse, setServerResponse] = useState<TournamentsResponse | null>(null);
   const [userProofs, setUserProofs] = useState<ZKProofPayload[]>(() => {
     try {
-      const stored = localStorage.getItem(PROOFS_STORAGE_KEY);
-      if (stored) return JSON.parse(stored);
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        const stored = localStorage.getItem(PROOFS_STORAGE_KEY);
+        if (stored) return JSON.parse(stored);
+      }
     } catch {
       // fallback
     }
@@ -202,7 +204,7 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
 
     // Purge any legacy localStorage tournament items from older schema versions
     try {
-      if (typeof localStorage !== 'undefined') {
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
         localStorage.removeItem('privaterank_midnight_tournaments_v3');
         localStorage.removeItem('privaterank_midnight_tournaments_v2');
         localStorage.removeItem('privaterank_midnight_tournaments');
@@ -249,7 +251,9 @@ export const TournamentProvider: React.FC<{ children: React.ReactNode }> = ({ ch
   const saveProofs = (proofs: ZKProofPayload[]) => {
     setUserProofs(proofs);
     try {
-      localStorage.setItem(PROOFS_STORAGE_KEY, JSON.stringify(proofs));
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        localStorage.setItem(PROOFS_STORAGE_KEY, JSON.stringify(proofs));
+      }
     } catch {
       // fallback
     }

@@ -17,10 +17,11 @@ export class ProfileService {
     const key = this.getStorageKey(safeAddress);
     
     try {
-      const stored = localStorage.getItem(key);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (parsed && typeof parsed === 'object') {
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        const stored = localStorage.getItem(key);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed && typeof parsed === 'object') {
           return {
             walletAddress: safeAddress,
             anonymousId: parsed.anonymousId || `PR-${safeAddress.slice(2, 6).toUpperCase()}`,
@@ -44,7 +45,8 @@ export class ProfileService {
           };
         }
       }
-    } catch (e) {
+    }
+  } catch (e) {
       console.warn('Failed to load profile from storage:', e);
     }
 
@@ -140,7 +142,13 @@ export class ProfileService {
       }
     };
 
-    localStorage.setItem(key, JSON.stringify(toSave));
+    try {
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        localStorage.setItem(key, JSON.stringify(toSave));
+      }
+    } catch {
+      // non-fatal in non-browser env
+    }
   }
 
   public static calculateCompletion(profile: PlayerProfile): { percentage: number; missingFields: string[] } {

@@ -279,11 +279,13 @@ export class ContractService {
 
   public static getTournaments(): Tournament[] {
     try {
-      const stored = localStorage.getItem(TOURNAMENTS_STORAGE_KEY);
-      if (stored) {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed;
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        const stored = localStorage.getItem(TOURNAMENTS_STORAGE_KEY);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
         }
       }
     } catch {
@@ -294,7 +296,9 @@ export class ContractService {
 
   private static saveTournaments(tournaments: Tournament[]): void {
     try {
-      localStorage.setItem(TOURNAMENTS_STORAGE_KEY, JSON.stringify(tournaments));
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        localStorage.setItem(TOURNAMENTS_STORAGE_KEY, JSON.stringify(tournaments));
+      }
     } catch {
       // fallback
     }
@@ -302,9 +306,11 @@ export class ContractService {
 
   public static getApplications(): Application[] {
     try {
-      const stored = localStorage.getItem(APPLICATIONS_STORAGE_KEY);
-      if (stored) {
-        return JSON.parse(stored);
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        const stored = localStorage.getItem(APPLICATIONS_STORAGE_KEY);
+        if (stored) {
+          return JSON.parse(stored);
+        }
       }
     } catch {
       // fallback
@@ -314,7 +320,9 @@ export class ContractService {
 
   private static saveApplications(applications: Application[]): void {
     try {
-      localStorage.setItem(APPLICATIONS_STORAGE_KEY, JSON.stringify(applications));
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        localStorage.setItem(APPLICATIONS_STORAGE_KEY, JSON.stringify(applications));
+      }
     } catch {
       // fallback
     }
@@ -322,9 +330,11 @@ export class ContractService {
 
   public static getTeams(): Team[] {
     try {
-      const stored = localStorage.getItem(TEAMS_STORAGE_KEY);
-      if (stored) {
-        return JSON.parse(stored);
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        const stored = localStorage.getItem(TEAMS_STORAGE_KEY);
+        if (stored) {
+          return JSON.parse(stored);
+        }
       }
     } catch {
       // fallback
@@ -334,7 +344,9 @@ export class ContractService {
 
   private static saveTeams(teams: Team[]): void {
     try {
-      localStorage.setItem(TEAMS_STORAGE_KEY, JSON.stringify(teams));
+      if (typeof window !== 'undefined' && typeof localStorage !== 'undefined') {
+        localStorage.setItem(TEAMS_STORAGE_KEY, JSON.stringify(teams));
+      }
     } catch {
       // fallback
     }

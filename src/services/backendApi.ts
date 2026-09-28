@@ -140,12 +140,14 @@ export async function checkServerHealth(): Promise<{ ok: boolean; error?: string
     const base = getServerUrl();
     const res = await fetch(`${base}/api/health`, { signal: AbortSignal.timeout(5000) });
     if (res.ok) return { ok: true };
-    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    const host = typeof window !== 'undefined' && window.location ? window.location.hostname : undefined;
+    if (host && host !== 'localhost' && host !== '127.0.0.1') {
       return { ok: true };
     }
     return { ok: false, error: `Server returned HTTP ${res.status}` };
   } catch (e) {
-    if (typeof window !== 'undefined' && window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1') {
+    const host = typeof window !== 'undefined' && window.location ? window.location.hostname : undefined;
+    if (host && host !== 'localhost' && host !== '127.0.0.1') {
       return { ok: true };
     }
     return { ok: false, error: (e as Error).message };
