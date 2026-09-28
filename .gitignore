@@ -42,3 +42,5 @@ scratch_*.mjs
 test_*.mjs
 scan_blocks.mjs
 search_recent_contracts.mjs
+
+.vercel

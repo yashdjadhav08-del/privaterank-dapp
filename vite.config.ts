@@ -51,14 +51,6 @@ export default defineConfig({
   build: {
     target: 'esnext',
     rollupOptions: {
-      external: [
-        '@midnight-ntwrk/midnight-js-contracts',
-        '@midnight-ntwrk/midnight-js-utils',
-        '@midnight-ntwrk/onchain-runtime-v3',
-        '@midnight-ntwrk/compact-runtime',
-        '@midnight-ntwrk/compact-js',
-        '@midnight-ntwrk/dapp-connector-api'
-      ],
       output: {
         manualChunks(id) {
           if (id.includes('@midnight-ntwrk')) {
